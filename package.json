@@ -1,0 +1,12 @@
+{
+  "name": "muxr-task-titles",
+  "version": "0.1.0",
+  "description": "Herdr plugin: short, readable titles for agent tasks",
+  "type": "module",
+  "scripts": {
+    "test": "node --test titles.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

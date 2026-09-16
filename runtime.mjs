@@ -3,17 +3,18 @@
 // only `{ "enabled": true|false }`; `outcome.json` holds the latest result.
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { chmod, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { promisify } from 'node:util';
-import { firstUserPrompt, titleCandidate, titleFromRepo } from './title.mjs';
+import { titleCandidate, titleFromRepo } from './title.mjs';
+import { promptFor } from './providers/index.mjs';
 
 const exec = promisify(execFile);
-const SOURCE = 'plugin:muxr.task-titles';
+const SOURCE = 'plugin:herdr.task-titles';
 // Another naming plugin owns the session: yield. animal-namer only writes
 // agent identity names, so it can coexist.
 const WRITERS = /(?:renam|auto.?nam|task.?title)/i;
-const DEFAULT_LABELS = new Set(['', 'Shell', 'Terminal', 'Agent', 'Claude', 'Codex', 'Pi']);
+const DEFAULT_LABELS = new Set(['', 'Shell', 'Terminal', 'Agent', 'Claude', 'Codex', 'Pi', 'Opencode']);
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function herdr(args) {
@@ -28,7 +29,7 @@ function json(output) {
 }
 
 async function privateDirectory(dir) {
-    if (!isAbsolute(dir) || !dir.endsWith('/muxr.task-titles')) throw new Error('Task titles config directory unavailable');
+    if (!isAbsolute(dir) || !dir.endsWith('/herdr.task-titles')) throw new Error('Task titles config directory unavailable');
     await mkdir(dir, { recursive: true, mode: 0o700 });
     const details = await lstat(dir);
     if (!details.isDirectory() || details.isSymbolicLink() || details.uid !== process.getuid()) {
@@ -80,42 +81,11 @@ function initialOwner({ pane, agent }) {
 async function writers(call) {
     const list = json(await call(['plugin', 'list', '--json'])).plugins;
     if (!Array.isArray(list)) throw new Error('Herdr plugin list unavailable');
-    return list.filter((plugin) => plugin?.enabled === true && plugin.plugin_id !== 'muxr.task-titles'
+    return list.filter((plugin) => plugin?.enabled === true && plugin.plugin_id !== 'herdr.task-titles'
         && plugin.plugin_id !== 'animal-namer'
         && (WRITERS.test(`${plugin.plugin_id} ${plugin.name ?? ''}`)
             || (plugin.events ?? []).some((event) => event.on === 'pane.agent_status_changed' && WRITERS.test(plugin.description ?? ''))))
         .map((plugin) => ({ id: plugin.plugin_id, name: plugin.name ?? plugin.plugin_id, source: plugin.source?.kind ?? 'local' }));
-}
-
-async function findTranscript(ref) {
-    const kind = ref.agent;
-    if (kind === 'pi') return ref.value;
-    if (!['claude', 'codex'].includes(kind) || !/^[a-zA-Z0-9-]{8,80}$/.test(ref.value)) return undefined;
-    const root = kind === 'claude'
-        ? (process.env.CLAUDE_CONFIG_DIR || join(process.env.HOME ?? '', '.claude', 'projects'))
-        : (process.env.CODEX_HOME || join(process.env.HOME ?? '', '.codex', 'sessions'));
-    const start = kind === 'claude' && !root.endsWith('/projects') ? join(root, 'projects') : root;
-    const queue = [start];
-    let visited = 0;
-    while (queue.length && visited++ < 500) {
-        const dir = queue.shift();
-        let entries;
-        try { entries = await readdir(dir, { withFileTypes: true }); } catch { continue; }
-        for (const entry of entries) {
-            const path = join(dir, entry.name);
-            if (entry.isDirectory()) queue.push(path);
-            else if (entry.isFile() && entry.name.endsWith(`${ref.value}.jsonl`)) return path;
-        }
-    }
-    return undefined;
-}
-
-async function promptFor(ref) {
-    const path = await findTranscript(ref);
-    if (!path) return undefined;
-    const details = await stat(path).catch(() => undefined);
-    if (!details?.isFile() || details.size > 2 * 1024 * 1024) return undefined;
-    return firstUserPrompt(ref.agent, await readFile(path, 'utf8'));
 }
 
 async function outcome(dir, result) {
@@ -174,8 +144,8 @@ export async function handleStatus({ event, configDir, call = herdr, readPrompt 
         // dies after Herdr accepts it, reconnect cannot publish a second time.
         await save(marker, { status: 'publishing', at: new Date().toISOString() });
         await call(['pane', 'report-metadata', paneId, '--source', SOURCE, '--title', candidate.title,
-            '--token', `muxr_task_title_hash=${displayHash(candidate.title)}`,
-            '--token', `muxr_task_label_hash=${displayHash(before.pane.label ?? '')}`,
+            '--token', `herdr_task_title_hash=${displayHash(candidate.title)}`,
+            '--token', `herdr_task_label_hash=${displayHash(before.pane.label ?? '')}`,
             '--ttl-ms', '86400000']);
         await save(marker, { status: 'published', title: candidate.title, source: SOURCE, confidence: candidate.confidence, at: new Date().toISOString() });
         return await outcome(dir, { status: 'titled', title: candidate.title, confidence: candidate.confidence, source: candidate.source });

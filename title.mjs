@@ -48,33 +48,6 @@ export function titleCandidate(sample) {
         : { confidence: 'ambiguous', reason: 'No clear task request in this prompt.' };
 }
 
-function textBlocks(value) {
-    if (typeof value === 'string') return value;
-    if (!Array.isArray(value)) return '';
-    return value.filter((item) => item?.type === 'text' || item?.type === 'input_text')
-        .map((item) => item.text).filter((text) => typeof text === 'string').join('\n');
-}
-
-/** Read only user messages; never infer from terminal output or tool messages. */
-export function firstUserPrompt(kind, jsonl) {
-    for (const line of jsonl.split('\n')) {
-        let row;
-        try { row = JSON.parse(line); } catch { continue; }
-        let prompt = '';
-        if (kind === 'codex' && row.type === 'response_item' && row.payload?.type === 'message' && row.payload.role === 'user') {
-            prompt = textBlocks(row.payload.content);
-        } else if (kind === 'claude' && row.type === 'user' && row.isMeta !== true) {
-            prompt = textBlocks(row.message?.content);
-        } else if (kind === 'pi' && row.type === 'message' && row.message?.role === 'user') {
-            prompt = textBlocks(row.message.content);
-        }
-        if (!prompt || /^(?:# AGENTS\.md|<INSTRUCTIONS>|<user_instructions>|<environment_context>|<command-|<local-command)/.test(prompt.trim())) continue;
-        if (!titleCandidate(prompt).title) continue;
-        return prompt;
-    }
-    return undefined;
-}
-
 const GENERIC_DIRS = new Set(['home', 'user', 'users', 'code', 'src', 'work', 'projects', 'repos', 'repo', 'tmp', 'root']);
 
 /** Weakest signal: the repo directory the pane is working in. Rejects home,

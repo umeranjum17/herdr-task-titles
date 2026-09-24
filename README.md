@@ -59,7 +59,9 @@ Agents it already named keep their names; this plugin only fills blank ones.
 When an agent reports `working` with a bound session, and only then, the
 plugin publishes display-only pane title metadata (`pane report-metadata`,
 source `plugin:herdr.task-titles`, 24h TTL). It titles each agent generation
-at most once.
+once. The one exception: a repo-name title (written because the transcript
+was not readable yet) is replaced once by a better title on a later
+`working` event, provided nobody else has written over it.
 
 **What a name is derived from, in fallback order:**
 
@@ -70,11 +72,18 @@ at most once.
    scaffolding, wrapper text) are skipped, never slugged. A session whose
    transcript opens with *"Fix the auth redirect bug in login flow"*
    becomes **"Fix auth redirect bug"** — not a slug of its launcher.
-2. **Working directory** — the repo basename of the pane's foreground cwd
+   For a launch brief, a clear ask in its *Captain's intent* section wins;
+   otherwise the task branch the brief creates (`git checkout -b
+   fm/tt-title-fallback1` → **"Tt title fallback"**) names it, so agents
+   launched in one repo get distinct titles.
+2. **Task branch**: the pane's current git branch, when it is a prefixed
+   task branch (`fm/checkout-race2` → **"Checkout race"**). `main` and
+   other unprefixed branches say nothing about the task and are skipped.
+3. **Working directory** — the repo basename of the pane's foreground cwd
    (`/home/user/herdr-task-titles` → **"Herdr task titles"**). Generic
    directory names (`home`, `user`, `src`, `code`, …), dotfiles, and bare
    hashes are rejected.
-3. **Nothing** — if neither signal beats what Herdr already shows, the
+4. **Nothing** — if neither signal beats what Herdr already shows, the
    plugin leaves the name alone rather than replace a good name with a
    worse one.
 
@@ -119,7 +128,9 @@ back — it never throws, never blocks, never writes a guess.
   and label immediately before publishing, and fails closed on any change.
   A competing writer acting between the final read and Herdr's write
   remains a platform limitation; the active-writer check avoids known
-  competing hooks.
+  competing hooks. A change that leaves the pane untitled (typically the
+  agent being named at the same moment) gets exactly one re-check before
+  giving up; it never loops.
 
 ## Install
 

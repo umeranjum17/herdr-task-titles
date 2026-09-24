@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { titleCandidate, titleFromRepo } from './title.mjs';
+import { titleCandidate, titleFromBranch, titleFromRepo } from './title.mjs';
 import { handleStatus } from './runtime.mjs';
 import { promptFor } from './providers/index.mjs';
 import { firstPromptFromMessages, opencodeAdapter } from './providers/opencode.mjs';
@@ -69,10 +69,63 @@ describe('task titles', () => {
 
     it('falls back to the repo directory when the prompt is boilerplate', async () => {
         const { writes, call, event } = rig({ session: 'generation-two', cwd: '/home/user/herdr-task-titles' });
-        const result = await handleStatus({ event, configDir, call, readPrompt: async () => 'FIRSTMATE_OP: v1 launch-brief: You are a crewmate' });
+        const result = await handleStatus({ event, configDir, call, readPrompt: async () => 'FIRSTMATE_OP: v1 launch-brief: You are a crewmate', readBranch: async () => 'main' });
         assert.equal(result.status, 'titled');
         assert.equal(result.title, 'Herdr task titles');
         assert.equal(writes.length, 1);
+    });
+
+    it('gives brief-launched agents in one repo distinct titles', async () => {
+        const brief = (task, intent) => `\u2063FIRSTMATE_OP: v1 launch-brief: # Current worker role contract\nYou are a crewmate.\n# Task\n## Captain's intent\n${intent}\n## Firstmate spec\nFix both in the plugin.\n# Setup\n1. First action: create your branch: \`git checkout -b fm/${task}\``;
+        const titles = [];
+        for (const [task, intent] of [['tt-title-fallback1', 'Why is everyone showing the name pockit?'], ['pock-lavish-proof1', 'Show the proof board.']]) {
+            const { call, event } = rig({ session: `brief-${task}` });
+            const result = await handleStatus({ event, configDir, call, readPrompt: async () => brief(task, intent), readBranch: async () => undefined });
+            assert.equal(result.status, 'titled');
+            titles.push(result.title);
+        }
+        assert.deepEqual(titles, ['Tt title fallback', 'Pock lavish proof']);
+        // A clear ask in the captain's intent still wins over the branch.
+        assert.equal(titleCandidate(brief('tt-x1', 'Fix the auth redirect bug in login flow')).title, 'Fix auth redirect bug');
+    });
+
+    it('uses the task branch before the repo name when the prompt says nothing', async () => {
+        const { call, event } = rig({ session: 'branch-fallback' });
+        const result = await handleStatus({ event, configDir, call, readPrompt: async () => undefined, readBranch: async () => 'fm/checkout-race2' });
+        assert.equal(result.title, 'Checkout race');
+        assert.equal(titleFromBranch('main'), undefined);
+        assert.equal(titleFromBranch('fm/0123abcd'), undefined);
+    });
+
+    it('re-checks a title raced by a naming write exactly once', async () => {
+        const { agent, writes, call, event } = rig({ session: 'raced-once' });
+        // The agent gets its name between our first read and the publish check.
+        const readPrompt = async () => { agent.name = 'neon'; return 'Fix the auth bug'; };
+        const result = await handleStatus({ event, configDir, call, readPrompt });
+        assert.equal(result.status, 'titled');
+        assert.equal(writes.length, 1);
+
+        const busy = rig({ session: 'raced-forever' });
+        let gets = 0;
+        const churn = async (args) => {
+            if (args[0] === 'agent' && args[1] === 'get') busy.agent.name = `name-${gets++}`;
+            return busy.call(args);
+        };
+        assert.equal((await handleStatus({ event: busy.event, configDir, call: churn, readPrompt: async () => 'Fix the auth bug' })).status, 'owned elsewhere');
+        assert.equal(gets, 3);
+        assert.equal(busy.writes.length, 0);
+    });
+
+    it('upgrades its own repo-name title once the prompt is readable', async () => {
+        const { agent, writes, call, event } = rig({ session: 'late-transcript' });
+        const readBranch = async () => undefined;
+        const first = await handleStatus({ event, configDir, call, readPrompt: async () => undefined, readBranch });
+        assert.equal(first.title, 'Pockit');
+        const second = await handleStatus({ event, configDir, call, readPrompt: async () => 'Fix the auth redirect bug in login flow', readBranch });
+        assert.equal(second.title, 'Fix auth redirect bug');
+        assert.equal(agent.title, 'Fix auth redirect bug');
+        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'Add dark mode', readBranch })).status, 'already handled');
+        assert.equal(writes.length, 2);
     });
 
     it('yields to other naming plugins and fails closed offline', async () => {

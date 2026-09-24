@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process';
 import { chmod, lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { promisify } from 'node:util';
-import { titleCandidate, titleFromRepo } from './title.mjs';
+import { titleCandidate, titleFromBranch, titleFromRepo } from './title.mjs';
 import { promptFor } from './providers/index.mjs';
 
 const exec = promisify(execFile);
@@ -20,6 +20,13 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export async function herdr(args) {
     const { stdout } = await exec(process.env.HERDR_BIN_PATH || 'herdr', args, { timeout: 5000, maxBuffer: 512 * 1024 });
     return stdout.trim();
+}
+
+/** Current branch of the pane's cwd, or undefined. Never throws. */
+export async function gitBranch(cwd) {
+    if (typeof cwd !== 'string' || !isAbsolute(cwd)) return undefined;
+    try { return (await exec('git', ['-C', cwd, 'branch', '--show-current'], { timeout: 2000 })).stdout.trim() || undefined; }
+    catch { return undefined; }
 }
 
 export function json(output) {
@@ -78,6 +85,12 @@ function initialOwner({ pane, agent }) {
     return !title && !paneTitle && DEFAULT_LABELS.has(label);
 }
 
+// Our own repo-name title may still be upgraded: nobody else wrote over it.
+function ownRepoTitle({ pane, agent }, claimed) {
+    return claimed?.status === 'published' && claimed.confidence === 'repo name' && DEFAULT_LABELS.has(pane.label?.trim() ?? '')
+        && [agent.title, pane.title].every((title) => !title?.trim() || title.trim() === claimed.title);
+}
+
 async function writers(call) {
     const list = json(await call(['plugin', 'list', '--json'])).plugins;
     if (!Array.isArray(list)) throw new Error('Herdr plugin list unavailable');
@@ -94,7 +107,7 @@ async function outcome(dir, result) {
 }
 
 /** Herdr event hook: one serialized, fail-closed title attempt per bound agent generation. */
-export async function handleStatus({ event, configDir, call = herdr, readPrompt = promptFor }) {
+export async function handleStatus({ event, configDir, call = herdr, readPrompt = promptFor, readBranch = gitBranch }) {
     if (event?.data?.agent_status !== 'working' || typeof event.data.pane_id !== 'string') return { status: 'ignored' };
     const dir = await privateDirectory(configDir);
     const config = await load(join(dir, 'settings.json'), { enabled: true });
@@ -113,8 +126,12 @@ export async function handleStatus({ event, configDir, call = herdr, readPrompt 
         }
         if (!before) return await outcome(dir, { status: 'unavailable', reason: 'Agent session is not bound.' });
         const marker = join(dir, `generation-${before.generation}.json`);
-        if (await load(marker, undefined)) return { status: 'already handled' };
-        if (!initialOwner(before)) return await outcome(dir, { status: 'owned elsewhere', reason: 'An existing title or pane label is already in use.' });
+        // A repo-name title is a guess made when the prompt was not readable
+        // yet; a later working event gets one chance to replace it.
+        const claimed = await load(marker, undefined);
+        const owner = claimed ? (snap) => ownRepoTitle(snap, claimed) : initialOwner;
+        if (claimed && !owner(before)) return { status: 'already handled' };
+        if (!owner(before)) return await outcome(dir, { status: 'owned elsewhere', reason: 'An existing title or pane label is already in use.' });
         const attemptFile = join(dir, `attempts-${before.generation}.json`);
         const attempts = await load(attemptFile, { count: 0 });
         if (!Number.isInteger(attempts.count) || attempts.count < 0 || attempts.count >= 2) {
@@ -131,14 +148,24 @@ export async function handleStatus({ event, configDir, call = herdr, readPrompt 
         // Weakest signal last: the repo directory. Still better than a
         // generic "Shell" label; anything worse leaves the name alone.
         if (!candidate?.title) {
-            candidate = titleFromRepo(before.pane.foreground_cwd ?? before.pane.cwd) ?? candidate;
+            const cwd = before.pane.foreground_cwd ?? before.pane.cwd;
+            candidate = titleFromBranch(await readBranch(cwd).catch(() => undefined)) ?? titleFromRepo(cwd) ?? candidate;
         }
         if (!candidate?.title) return await outcome(dir, { status: 'needs title', reason: candidate?.reason ?? 'No first task prompt was available.' });
+        if (claimed && (candidate.confidence === 'repo name' || candidate.title === claimed.title)) return { status: 'already handled' };
         // The plugin registry, agent generation, title, and pane label are all
         // checked again under our lock immediately before the non-atomic write.
-        if ((await writers(call)).length) return await outcome(dir, { status: 'conflict', reason: 'Another title writer became active.' });
-        const current = await snapshot(call, paneId);
-        if (!ownerMatches(before, current)) return await outcome(dir, { status: 'owned elsewhere', reason: 'Agent or title changed before publication.' });
+        // A change that leaves the pane ours (the agent was just named) gets
+        // exactly one re-check; anything else fails closed.
+        for (let retry = 0; ; retry++) {
+            if ((await writers(call)).length) return await outcome(dir, { status: 'conflict', reason: 'Another title writer became active.' });
+            const current = await snapshot(call, paneId).catch(() => undefined);
+            if (ownerMatches(before, current)) break;
+            if (retry >= 1 || current?.generation !== before.generation || current.agent.agent_status !== 'working' || !owner(current)) {
+                return await outcome(dir, { status: 'owned elsewhere', reason: 'Agent or title changed before publication.' });
+            }
+            before = current;
+        }
         if ((await load(join(dir, 'settings.json'), { enabled: true })).enabled === false) return { status: 'disabled' };
         // A durable claim precedes the non-atomic Herdr write. If the process
         // dies after Herdr accepts it, reconnect cannot publish a second time.

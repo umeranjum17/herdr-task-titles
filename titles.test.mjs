@@ -59,6 +59,14 @@ describe('task titles', () => {
         assert.equal(agent.title, 'My manual task');
     });
 
+    it('keeps task titles on when only the name set is configured', async () => {
+        await writeFile(join(configDir, 'settings.json'), '{ "names": "elements" }');
+        const { writes, call, event } = rig({ session: 'names-only-settings' });
+        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'Fix the auth bug' })).status, 'titled');
+        assert.equal(writes.length, 1);
+        await writeFile(join(configDir, 'settings.json'), '{ "enabled": true }');
+    });
+
     it('falls back to the repo directory when the prompt is boilerplate', async () => {
         const { writes, call, event } = rig({ session: 'generation-two', cwd: '/home/user/herdr-task-titles' });
         const result = await handleStatus({ event, configDir, call, readPrompt: async () => 'FIRSTMATE_OP: v1 launch-brief: You are a crewmate' });

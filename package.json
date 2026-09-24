@@ -1,10 +1,10 @@
 {
   "name": "herdr-task-titles",
-  "version": "0.1.0",
-  "description": "Herdr plugin: short, readable titles for agent tasks",
+  "version": "0.2.0",
+  "description": "Herdr plugin: speakable agent names and short, readable task titles",
   "type": "module",
   "scripts": {
-    "test": "node --test titles.test.mjs"
+    "test": "node --test titles.test.mjs names.test.mjs"
   },
   "engines": {
     "node": ">=20"

@@ -1,10 +1,19 @@
 id = "herdr.task-titles"
 name = "Task titles"
-version = "0.1.0"
+version = "0.2.0"
 min_herdr_version = "0.8.0"
 platforms = ["linux", "macos"]
-description = "Give each agent task a short, readable title from its first real prompt"
+description = "Give each agent a short, speakable name and each task a short, readable title"
 
 [[events]]
 on = "pane.agent_status_changed"
 command = ["node", "hook.mjs"]
+
+[[events]]
+on = "pane.agent_detected"
+command = ["node", "hook.mjs", "name"]
+
+# agent_detected can fire before the agent is listed; focus catches the stragglers.
+[[events]]
+on = "pane.focused"
+command = ["node", "hook.mjs", "name"]

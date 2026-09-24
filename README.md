@@ -1,13 +1,58 @@
 # herdr-task-titles
 
-A Herdr plugin that gives each agent task a short, readable title — one a
+A Herdr plugin for all agent naming: each agent gets a short name you can
+say out loud, and each agent task gets a short, readable title — one a
 person reads at a glance and knows which session it is. No network, no LLM,
 no dependencies: titles come from signals the session already offers.
 
 It is useful in muxr but it is not muxr-specific: it talks only to Herdr,
 works with any client, and muxr shows Herdr's own names verbatim.
 
-## What it does
+## Agent names
+
+When Herdr detects an agent, the agent's status changes, or its pane is
+focused, the plugin gives that agent a name — but only if its Herdr name is
+empty or starts with muxr's internal `pp_`/`pph_` launch prefixes. It:
+
+- never renames an agent whose name is already set, including a manual
+  rename;
+- never names a plain shell pane, only panes running an agent;
+- picks a random name no other agent is using, and adds a number
+  (`neon-42`) only once every name in the set is taken.
+
+Names are picked to be easy to say and hear apart, for talking to agents
+through a voice assistant: 1–3 syllables, no two starting with the same two
+letters, no two that rhyme. `names.test.mjs` guards both lists.
+
+| `names` | Names |
+|---|---|
+| `elements` (default) | neon, gold, zinc, cobalt, silver, helium, nickel, oxygen, … (29 chemical elements) |
+| `nato` | alfa, bravo, charlie, delta, … zulu (NATO phonetic alphabet) |
+| `off` | agent naming off; task titles keep working |
+
+Set it in `settings.json` in the plugin's config directory:
+
+```sh
+herdr plugin config-dir herdr.task-titles   # prints the directory
+# settings.json: { "names": "nato" }
+```
+
+Changing the set names new agents only; existing names stay.
+
+### Replacing a separate agent namer
+
+If you already run a local plugin that names agents (for example an
+`animal-namer` linked from `~/.herdr-plugins`), remove it once this plugin
+is linked, so two plugins don't race to name the same agent:
+
+```sh
+herdr plugin list                  # find the old namer's id
+herdr plugin unlink animal-namer   # or: herdr plugin disable animal-namer
+```
+
+Agents it already named keep their names; this plugin only fills blank ones.
+
+## Task titles
 
 When an agent reports `working` with a bound session, and only then, the
 plugin publishes display-only pane title metadata (`pane report-metadata`,
@@ -54,15 +99,17 @@ back — it never throws, never blocks, never writes a guess.
   (`herdr-plugin-renamer`, `auto-namer`, or anything matching
   *renam*/*auto-nam*/*task-title*) is enabled, the hook reports `conflict`
   and writes nothing. Disable that writer deliberately before enabling
-  this one. (`animal-namer` only writes agent identity names and coexists.)
+  this one. This check is for task titles; a separate agent namer does not
+  block titles, but see *Replacing a separate agent namer* above.
 - **Never touches existing titles.** A non-blank agent/pane title or a
   non-generic pane label (including a manual rename) is treated as owned
   and left alone.
-- **Never touches identity.** Agent names, pane labels, branches,
-  workspaces, and terminal titles are never written — only display-only
-  title metadata via `report-metadata`.
+- **Titles never touch identity.** Titling never writes pane labels,
+  branches, workspaces, or terminal titles — only display-only title
+  metadata via `report-metadata`. The only identity it writes is a blank
+  agent name (see Agent names).
 - **Never saves prompt text.** The config directory holds only
-  `settings.json` (`{ "enabled": true|false }`), per-generation markers
+  `settings.json` (`{ "enabled": true|false, "names": "elements" }`), per-generation markers
   (title hash, title, source, confidence, time), and `outcome.json` with
   the latest result.
 - Herdr has no atomic compare-and-set for title metadata. The hook
@@ -85,7 +132,7 @@ herdr plugin list   # herdr.task-titles should appear, enabled
 
 Disable any other naming plugin first (`herdr plugin disable
 herdr-plugin-renamer`), otherwise this plugin yields and writes nothing.
-Toggle without uninstalling:
+Toggle the whole plugin (names and titles) without uninstalling:
 
 ```sh
 # settings.json in the printed directory: { "enabled": false }
@@ -100,7 +147,8 @@ rm -rf "$(herdr plugin config-dir herdr.task-titles)"
 ```
 
 No residue: the plugin keeps no state outside its own config directory,
-and published titles expire via their 24h TTL.
+and published titles expire via their 24h TTL. Agent names it gave are
+ordinary Herdr names; rename them as usual.
 
 ## Adding a provider
 

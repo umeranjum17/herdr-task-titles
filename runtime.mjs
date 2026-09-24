@@ -22,7 +22,7 @@ export async function herdr(args) {
     return stdout.trim();
 }
 
-function json(output) {
+export function json(output) {
     const parsed = JSON.parse(output);
     if (parsed.error) throw new Error(parsed.error.message ?? 'Herdr call failed');
     return parsed.result ?? parsed;
@@ -39,7 +39,7 @@ async function privateDirectory(dir) {
     return dir;
 }
 
-async function load(file, fallback) {
+export async function load(file, fallback) {
     try { return JSON.parse(await readFile(file, 'utf8')); }
     catch (error) { if (error?.code === 'ENOENT') return fallback; throw error; }
 }

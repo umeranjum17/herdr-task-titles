@@ -72,10 +72,13 @@ was not readable yet) is replaced once by a better title on a later
    scaffolding, wrapper text) are skipped, never slugged. A session whose
    transcript opens with *"Fix the auth redirect bug in login flow"*
    becomes **"Fix auth redirect bug"** — not a slug of its launcher.
-   For a launch brief, a clear ask in its *Captain's intent* section wins;
-   otherwise the task branch the brief creates (`git checkout -b
-   fm/tt-title-fallback1` → **"Tt title fallback"**) names it, so agents
-   launched in one repo get distinct titles.
+   For a launch brief, its *Captain's intent* section wins: the first ask
+   in any sentence (*"…We need to align Herdr's title and name concepts
+   properly"* → **"Align Herdr's title and name concepts"**), else a
+   *"why is…"* question stated as the problem. Only when the intent has
+   neither does the task branch the brief creates (`git checkout -b
+   fm/pock-lrf1` → **"Pock lrf"**) name it, so agents launched in one repo
+   still get distinct titles.
 2. **Task branch**: the pane's current git branch, when it is a prefixed
    task branch (`fm/checkout-race2` → **"Checkout race"**). `main` and
    other unprefixed branches say nothing about the task and are skipped.

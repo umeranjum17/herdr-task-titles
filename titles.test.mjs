@@ -78,14 +78,19 @@ describe('task titles', () => {
     it('gives brief-launched agents in one repo distinct titles', async () => {
         const brief = (task, intent) => `\u2063FIRSTMATE_OP: v1 launch-brief: # Current worker role contract\nYou are a crewmate.\n# Task\n## Captain's intent\n${intent}\n## Firstmate spec\nFix both in the plugin.\n# Setup\n1. First action: create your branch: \`git checkout -b fm/${task}\``;
         const titles = [];
-        for (const [task, intent] of [['tt-title-fallback1', 'Why is everyone showing the name pockit?'], ['pock-lavish-proof1', 'Show the proof board.']]) {
+        const cases = [
+            ['tt-title-fallback1', "Why is everyone showing the name pockit? We need to align Herdr's title and name concepts properly, and have proper coverage of the naming plugins as well."],
+            ['pock-lavish-proof1', 'Why does the lavish board flicker on open?'],
+            ['pock-lrf1', 'Status update please.'],
+        ];
+        for (const [task, intent] of cases) {
             const { call, event } = rig({ session: `brief-${task}` });
             const result = await handleStatus({ event, configDir, call, readPrompt: async () => brief(task, intent), readBranch: async () => undefined });
             assert.equal(result.status, 'titled');
             titles.push(result.title);
         }
-        assert.deepEqual(titles, ['Tt title fallback', 'Pock lavish proof']);
-        // A clear ask in the captain's intent still wins over the branch.
+        // The intent's ask wins, then its "why" question; the branch only when the intent has neither.
+        assert.deepEqual(titles, ["Align Herdr's title and name concepts", 'Lavish board flicker on open', 'Pock lrf']);
         assert.equal(titleCandidate(brief('tt-x1', 'Fix the auth redirect bug in login flow')).title, 'Fix auth redirect bug');
     });
 

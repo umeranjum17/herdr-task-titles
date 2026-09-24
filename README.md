@@ -37,6 +37,8 @@ herdr plugin config-dir herdr.task-titles   # prints the directory
 # settings.json: { "names": "nato" }
 ```
 
+Naming is best effort: a manual rename landing at the same instant can be overwritten; rename again.
+
 Changing the set names new agents only; existing names stay.
 
 ### Replacing a separate agent namer

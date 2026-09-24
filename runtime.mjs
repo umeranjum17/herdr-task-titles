@@ -1,6 +1,6 @@
 // Herdr event hook: one serialized, fail-closed title attempt per bound agent
 // generation. Standalone: no host RPC, no settings UI. `settings.json` holds
-// only `{ "enabled": true|false }`; `outcome.json` holds the latest result.
+// `{ "enabled": true|false, "names": "elements"|"nato"|"off" }`; `outcome.json` holds the latest result.
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { chmod, lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
@@ -28,7 +28,7 @@ export function json(output) {
     return parsed.result ?? parsed;
 }
 
-async function privateDirectory(dir) {
+export async function privateDirectory(dir) {
     if (!isAbsolute(dir) || !dir.endsWith('/herdr.task-titles')) throw new Error('Task titles config directory unavailable');
     await mkdir(dir, { recursive: true, mode: 0o700 });
     const details = await lstat(dir);
@@ -98,7 +98,7 @@ export async function handleStatus({ event, configDir, call = herdr, readPrompt 
     if (event?.data?.agent_status !== 'working' || typeof event.data.pane_id !== 'string') return { status: 'ignored' };
     const dir = await privateDirectory(configDir);
     const config = await load(join(dir, 'settings.json'), { enabled: true });
-    if (config.enabled !== true) return { status: 'disabled' };
+    if (config.enabled === false) return { status: 'disabled' };
     const paneId = event.data.pane_id;
     const lock = join(dir, `pane-${key(paneId)}.lock`);
     try { await mkdir(lock); } catch { return { status: 'busy' }; }
@@ -139,7 +139,7 @@ export async function handleStatus({ event, configDir, call = herdr, readPrompt 
         if ((await writers(call)).length) return await outcome(dir, { status: 'conflict', reason: 'Another title writer became active.' });
         const current = await snapshot(call, paneId);
         if (!ownerMatches(before, current)) return await outcome(dir, { status: 'owned elsewhere', reason: 'Agent or title changed before publication.' });
-        if ((await load(join(dir, 'settings.json'), { enabled: true })).enabled !== true) return { status: 'disabled' };
+        if ((await load(join(dir, 'settings.json'), { enabled: true })).enabled === false) return { status: 'disabled' };
         // A durable claim precedes the non-atomic Herdr write. If the process
         // dies after Herdr accepts it, reconnect cannot publish a second time.
         await save(marker, { status: 'publishing', at: new Date().toISOString() });

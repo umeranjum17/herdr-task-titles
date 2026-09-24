@@ -7,7 +7,8 @@ import { herdr, json, load, privateDirectory } from './runtime.mjs';
 
 // Curated by ear for a voice assistant: 1-3 syllables, every name starts
 // with different letters, and no two rhyme (one of neon/xenon/argon, one
-// -dium, one -gen, ...). names.test.mjs guards the list.
+// -dium, one -gen, ...). names.test.mjs guards both lists. The default is
+// nato, in its familiar spellings (alpha, juliet).
 export const NAME_SETS = {
     elements: [
         'neon', 'gold', 'zinc', 'cobalt', 'silver', 'helium', 'nickel', 'oxygen',
@@ -16,8 +17,8 @@ export const NAME_SETS = {
         'tungsten', 'hafnium', 'francium', 'strontium', 'tantalum', 'lead', 'manganese',
     ],
     nato: [
-        'alfa', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel',
-        'india', 'juliett', 'kilo', 'lima', 'mike', 'november', 'oscar', 'papa',
+        'alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel',
+        'india', 'juliet', 'kilo', 'lima', 'mike', 'november', 'oscar', 'papa',
         'quebec', 'romeo', 'sierra', 'tango', 'uniform', 'victor', 'whiskey',
         'xray', 'yankee', 'zulu',
     ],
@@ -61,7 +62,7 @@ export async function nameAgent({ event, configDir, call = herdr, random = Math.
     try {
         const config = await load(join(dir, 'settings.json'), {});
         if (config.enabled === false) return { status: 'disabled' };
-        const names = NAME_SETS[config.names ?? 'elements'];
+        const names = NAME_SETS[config.names ?? 'nato'];
         if (!names) return { status: 'disabled' };
         const agents = json(await call(['agent', 'list'])).agents;
         if (!Array.isArray(agents)) return { status: 'unavailable' };

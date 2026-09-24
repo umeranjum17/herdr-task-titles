@@ -1,6 +1,6 @@
 // Herdr event hook: one serialized, fail-closed title attempt per bound agent
 // generation. Standalone: no host RPC, no settings UI. `settings.json` holds
-// `{ "enabled": true|false, "names": "elements"|"nato"|"off" }`; `outcome.json` holds the latest result.
+// `{ "enabled": true|false, "names": "nato"|"elements"|"off" }`; `outcome.json` holds the latest result.
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { chmod, lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';

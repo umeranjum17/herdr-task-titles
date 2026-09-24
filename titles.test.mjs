@@ -60,7 +60,7 @@ describe('task titles', () => {
     });
 
     it('keeps task titles on when only the name set is configured', async () => {
-        await writeFile(join(configDir, 'settings.json'), '{ "names": "nato" }');
+        await writeFile(join(configDir, 'settings.json'), '{ "names": "elements" }');
         const { writes, call, event } = rig({ session: 'names-only-settings' });
         assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'Fix the auth bug' })).status, 'titled');
         assert.equal(writes.length, 1);

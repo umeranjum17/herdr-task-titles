@@ -18,7 +18,7 @@ empty or starts with muxr's internal `pp_`/`pph_` launch prefixes. It:
   rename;
 - never names a plain shell pane, only panes running an agent;
 - picks a random name no other agent is using, and adds a number
-  (`neon-42`) only once every name in the set is taken.
+  (`bravo-2`) only once every name in the set is taken.
 
 Names are picked to be easy to say and hear apart, for talking to agents
 through a voice assistant: 1–3 syllables, no two starting with the same two
@@ -26,15 +26,15 @@ letters, no two that rhyme. `names.test.mjs` guards both lists.
 
 | `names` | Names |
 |---|---|
-| `elements` (default) | neon, gold, zinc, cobalt, silver, helium, nickel, oxygen, … (29 chemical elements) |
-| `nato` | alfa, bravo, charlie, delta, … zulu (NATO phonetic alphabet) |
+| `nato` (default) | alpha, bravo, charlie, delta, … juliet, … zulu (26 NATO phonetic alphabet words, familiar spellings) |
+| `elements` | neon, gold, zinc, cobalt, silver, helium, nickel, oxygen, … (29 chemical elements) |
 | `off` | agent naming off; task titles keep working |
 
 Set it in `settings.json` in the plugin's config directory:
 
 ```sh
 herdr plugin config-dir herdr.task-titles   # prints the directory
-# settings.json: { "names": "nato" }
+# settings.json: { "names": "elements" }
 ```
 
 Naming is best effort: a manual rename landing at the same instant can be overwritten; rename again.
@@ -111,7 +111,7 @@ back — it never throws, never blocks, never writes a guess.
   metadata via `report-metadata`. The only identity it writes is a blank
   agent name (see Agent names).
 - **Never saves prompt text.** The config directory holds only
-  `settings.json` (`{ "enabled": true|false, "names": "elements" }`), per-generation markers
+  `settings.json` (`{ "enabled": true|false, "names": "nato" }`), per-generation markers
   (title hash, title, source, confidence, time), and `outcome.json` with
   the latest result.
 - Herdr has no atomic compare-and-set for title metadata. The hook

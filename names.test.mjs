@@ -30,6 +30,10 @@ describe('agent names', () => {
         assert.equal(chooseName([agent('p1', ''), agent('p2', 'neon')], 'p1', names, first), 'gold');
         const full = chooseName([agent('p1', ''), agent('p2', 'neon'), agent('p3', 'gold')], 'p1', names, first);
         assert.equal(full, 'neon-2');
+        const nato = NAME_SETS.nato;
+        assert.equal(nato.length, 26);
+        assert.ok(nato.includes('alpha') && nato.includes('juliet'));
+        assert.equal(chooseName([agent('p1', ''), ...nato.map((name, i) => agent(`n${i}`, name))], 'p1', nato, () => 0.05), 'bravo-2');
         assert.equal(chooseName([agent('p1', ''), agent('p2', 'neon'), agent('p3', 'gold'), agent('p4', 'neon-2')], 'p1', names, first), 'gold-2');
         assert.equal(chooseName([agent('p1', ''), agent('p2', 'neon'), agent('p3', 'gold'), agent('p4', 'neon-2'), agent('p5', 'gold-2')], 'p1', names, first), 'neon-3');
     });
@@ -56,8 +60,8 @@ describe('agent names', () => {
         await listed;
         const b = nameAgent({ event: { data: { pane_id: 'b' } }, configDir, call, random: first });
         releaseList();
-        assert.equal((await a).name, 'neon');
-        assert.equal((await b).name, 'gold');
+        assert.equal((await a).name, 'alpha');
+        assert.equal((await b).name, 'bravo');
         assert.equal(lists, 2);
     });
 
@@ -72,23 +76,23 @@ describe('agent names', () => {
             calls.push(args);
             return JSON.stringify({ result: { agents: [agent('stale', '')] } });
         };
-        assert.deepEqual(await nameAgent({ event: { data: { pane_id: 'stale' } }, configDir, call, random: first }), { status: 'named', name: 'neon' });
-        assert.deepEqual(calls.at(-1), ['agent', 'rename', 'stale', 'neon']);
+        assert.deepEqual(await nameAgent({ event: { data: { pane_id: 'stale' } }, configDir, call, random: first }), { status: 'named', name: 'alpha' });
+        assert.deepEqual(calls.at(-1), ['agent', 'rename', 'stale', 'alpha']);
     });
 
     it('renames through Herdr and honours the configured set', async () => {
         const calls = [];
-        const agents = [agent('p1', 'pp_x'), agent('p2', 'neon')];
+        const agents = [agent('p1', 'pp_x'), agent('p2', 'alpha'), agent('p3', 'neon')];
         const call = async (args) => {
             calls.push(args);
             return JSON.stringify({ result: { agents } });
         };
         const event = { data: { pane_id: 'p1' } };
-        assert.deepEqual(await nameAgent({ event, configDir, call, random: first }), { status: 'named', name: 'gold' });
-        assert.deepEqual(calls.at(-1), ['agent', 'rename', 'p1', 'gold']);
+        assert.deepEqual(await nameAgent({ event, configDir, call, random: first }), { status: 'named', name: 'bravo' }, 'nato is the default');
+        assert.deepEqual(calls.at(-1), ['agent', 'rename', 'p1', 'bravo']);
 
-        await writeFile(join(configDir, 'settings.json'), '{ "names": "nato" }');
-        assert.equal((await nameAgent({ event, configDir, call, random: first })).name, 'alfa');
+        await writeFile(join(configDir, 'settings.json'), '{ "names": "elements" }');
+        assert.equal((await nameAgent({ event, configDir, call, random: first })).name, 'gold');
         await writeFile(join(configDir, 'settings.json'), '{ "names": "off" }');
         assert.equal((await nameAgent({ event, configDir, call, random: first })).status, 'disabled');
         await writeFile(join(configDir, 'settings.json'), '{ "enabled": false }');

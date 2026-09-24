@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
@@ -59,6 +59,21 @@ describe('agent names', () => {
         assert.equal((await a).name, 'neon');
         assert.equal((await b).name, 'gold');
         assert.equal(lists, 2);
+    });
+
+    it('recovers a leftover old naming lock', async () => {
+        await mkdir(configDir, { recursive: true });
+        const lock = join(configDir, 'agent-names.lock');
+        await mkdir(lock);
+        const old = new Date(Date.now() - 11_000);
+        await utimes(lock, old, old);
+        const calls = [];
+        const call = async (args) => {
+            calls.push(args);
+            return JSON.stringify({ result: { agents: [agent('stale', '')] } });
+        };
+        assert.deepEqual(await nameAgent({ event: { data: { pane_id: 'stale' } }, configDir, call, random: first }), { status: 'named', name: 'neon' });
+        assert.deepEqual(calls.at(-1), ['agent', 'rename', 'stale', 'neon']);
     });
 
     it('renames through Herdr and honours the configured set', async () => {

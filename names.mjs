@@ -1,7 +1,7 @@
 // Agent names: fill blank agent names with a short, voice-friendly word.
 // Herdr owns agent names; a name that is already set (including a manual
 // rename) is never touched. `settings.json` `names` picks the set.
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { herdr, json, load, privateDirectory } from './runtime.mjs';
 
@@ -52,6 +52,9 @@ export async function nameAgent({ event, configDir, call = herdr, random = Math.
     for (let attempt = 0; attempt < 24; attempt++) {
         try { await mkdir(lock); locked = true; break; }
         catch (error) { if (error?.code !== 'EEXIST') throw error; }
+        try {
+            if (Date.now() - (await stat(lock)).mtimeMs > 10_000) await rm(lock, { recursive: true, force: true });
+        } catch (error) { if (error?.code !== 'ENOENT') throw error; }
         await new Promise((resolve) => setTimeout(resolve, 250));
     }
     if (!locked) return { status: 'busy' };

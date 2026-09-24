@@ -14,7 +14,7 @@ export function textBlocks(value) {
 
 /** Launcher envelopes and harness scaffolding are not tasks. */
 export function isBoilerplate(prompt) {
-    return /^(?:# AGENTS\.md|<INSTRUCTIONS>|<user_instructions>|<environment_context>|<command-|<local-command)/.test(prompt.trim());
+    return /^(?:# AGENTS\.md|<INSTRUCTIONS>|<user_instructions>|<environment_context>|<command-|<local-command)/.test(prompt.replace(/\p{Cf}/gu, '').trim());
 }
 
 /** First user text that states a real task, else undefined. */

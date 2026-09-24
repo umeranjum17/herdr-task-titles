@@ -2,11 +2,13 @@
 // rejected and the caller falls back (repo name) or leaves the name alone.
 const WRAPPER = /^(?:FIRSTMATE_OP\s*:|v\d+ launch-brief\s*:|you are (?:a|the) (?:crewmate|agent)\b|#\s*(?:AGENTS\.md|INSTRUCTIONS|environment_context)\b)/i;
 const BOILERPLATE = /^(?:#\s*(?:Task|Rules|Setup|Definition of done|Firstmate spec|Current worker role contract|Current no-mistakes intent contract|Herdr isolation|Firstmate instruction inbox|Project memory)\b|##?\s*(?:Captain's intent|Captain intent authorized for --intent)\b|[-*]\s*(?:Do not|Never|Run |Use |Report |If you |Keep |Stay ))/i;
-const TASK_VERB = /^(?:please\s+)?(?:can you\s+|could you\s+|i want (?:you to\s+)?|help me\s+)?(build|implement|create|add|fix|repair|debug|improve|update|refactor|remove|replace|migrate|design|write|make|investigate|test|ship|integrate|support|extract|rename|simplify|audit)\b/i;
+const TASK_VERB = /^(?:please\s+)?(?:can you\s+|could you\s+|i (?:want|need) (?:you to\s+)?|help me\s+|we (?:need|have|want) to\s+|we should\s+|let'?s\s+)?(align|unify|rework|redesign|polish|restore|prevent|handle|finish|build|implement|create|add|fix|repair|debug|improve|update|refactor|remove|replace|migrate|design|write|make|investigate|test|ship|integrate|support|extract|rename|simplify|audit)\b/i;
+// A "why is X happening?" question states the problem when no ask does.
+const WHY = /^why (?:is|are|does|do|did|isn't|aren't|doesn't|don't|can't|won't) (?:the |an? )?/i;
 const STOP = new Set(['a', 'an', 'the', 'for', 'in', 'on', 'of', 'to', 'with', 'and', 'or', 'from', 'using', 'that', 'which', 'after', 'before', 'by']);
 
 function cleanLine(value) {
-    return value.replace(/^[\s>*-]+/, '').replace(/[`*_\[\]{}]/g, '').replace(/\s+/g, ' ').trim();
+    return value.replace(/\p{Cf}/gu, '').replace(/^[\s>*-]+/, '').replace(/[`*_\[\]{}]/g, '').replace(/\s+/g, ' ').trim();
 }
 
 function titleFromSentence(sentence) {
@@ -38,14 +40,34 @@ export function titleCandidate(sample) {
         if (/^#{1,3}\s*Captain(?:'s)? intent\b/i.test(line)) { inCaptainIntent = true; continue; }
         if (/^#{1,3}\s/.test(line) && !/^#{1,3}\s*Captain(?:'s)? intent\b/i.test(line)) inCaptainIntent = false;
         if (WRAPPER.test(line) || BOILERPLATE.test(line) || /^\[[^\]]+\]\s*$/.test(line)) continue;
-        const sentence = line.replace(/^#+\s*/, '').split(/[.!?](?:\s|$)/u)[0]?.trim() ?? '';
-        const match = TASK_VERB.exec(sentence);
-        if (match) candidates.push({ sentence: sentence.slice(match[0].length - match[1].length), priority: inCaptainIntent ? 2 : 1 });
+        // The captain's intent is prose: every sentence counts, not just the first.
+        const sentences = line.replace(/^#+\s*/, '').split(/[.!?](?:\s|$)/u).map((part) => part.trim());
+        for (const sentence of inCaptainIntent ? sentences.slice(0, 8) : sentences.slice(0, 1)) {
+            const match = TASK_VERB.exec(sentence);
+            if (match) candidates.push({ sentence: sentence.slice(match[0].length - match[1].length), priority: inCaptainIntent ? 3 : 1 });
+            else if (inCaptainIntent && WHY.test(sentence)) candidates.push({ sentence: sentence.replace(WHY, ''), priority: 2 });
+        }
     }
-    candidates.sort((a, b) => b.priority - a.priority);
-    const title = candidates.map(({ sentence }) => titleFromSentence(sentence)).find(Boolean);
+    const titled = (priority) => candidates.filter((c) => c.priority === priority).map(({ sentence }) => titleFromSentence(sentence)).find(Boolean);
+    const intent = titled(3) ?? titled(2);
+    if (intent) return { title: intent, confidence: 'clear task', source: 'first task prompt' };
+    // A launch brief names its task branch; that beats a stray imperative
+    // from the brief's scaffolding ("Fix both in the plugin").
+    const branch = titleFromBranch(/\bgit (?:checkout -b|switch -c) ([\w./-]+)/.exec(sample.slice(0, 65536))?.[1]);
+    if (branch) return { ...branch, source: 'launch brief' };
+    const title = titled(1);
     return title ? { title, confidence: 'clear task', source: 'first task prompt' }
         : { confidence: 'ambiguous', reason: 'No clear task request in this prompt.' };
+}
+
+/** Task branch (`fm/tt-title-fallback1`) -> "Tt title fallback". Only
+// prefixed branches count: `main` or a bare name says nothing about the task. */
+export function titleFromBranch(branch) {
+    const slug = typeof branch === 'string' ? /^[\w.-]+\/([\w.-]+)$/.exec(branch.trim())?.[1] : undefined;
+    if (!slug || /^[0-9a-f]{7,}$/i.test(slug)) return undefined;
+    const words = slug.replace(/[_.-]+/g, ' ').replace(/(\p{L})\d+$/u, '$1').replace(/\s+/g, ' ').trim();
+    if (words.length < 3 || words.length > 40 || !/\p{L}{2}/u.test(words)) return undefined;
+    return { title: words.charAt(0).toLocaleUpperCase() + words.slice(1), confidence: 'task branch', source: 'task branch' };
 }
 
 const GENERIC_DIRS = new Set(['home', 'user', 'users', 'code', 'src', 'work', 'projects', 'repos', 'repo', 'tmp', 'root']);

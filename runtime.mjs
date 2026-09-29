@@ -122,7 +122,7 @@ async function outcome(dir, result) {
     return result;
 }
 
-// The agent exited (`done` on the subscribed status event): clear the title
+// The agent exited (`done`, detector release, or pane exit): clear the title
 // we published so the pane falls back to the agent's name. A title that is
 // no longer ours (manual rename, another writer) is left alone, as is a
 // pane that already shows nothing. The session may already be unbound, so
@@ -147,15 +147,26 @@ async function clearOnExit({ paneId, dir, call }) {
     } finally { await rm(lock, { recursive: true, force: true }); }
 }
 
+// The agent is gone but its pane may live on with our title: the
+// detector released it (`released`, or a null agent outside a status
+// event) or its process exited. Any of these clears what we published.
+function isExitEvent(event) {
+    const data = event?.data;
+    if (!data || typeof data !== 'object') return false;
+    if (data.released === true || data.type === 'pane_exited') return true;
+    return data.agent_status == null && 'agent' in data && data.agent == null;
+}
+
 /** Herdr event hook: one serialized, fail-closed title per bound agent generation, refreshed on task change. */
 export async function handleStatus({ event, configDir, call = herdr, readPrompt = promptFor, readBranch = gitBranch }) {
     const signal = event?.data?.agent_status;
-    if (typeof event?.data?.pane_id !== 'string' || (signal !== 'working' && signal !== 'done')) return { status: 'ignored' };
+    const exited = isExitEvent(event);
+    if (typeof event?.data?.pane_id !== 'string' || (!exited && signal !== 'working' && signal !== 'done')) return { status: 'ignored' };
     const dir = await privateDirectory(configDir);
     const config = await load(join(dir, 'settings.json'), { enabled: true });
     if (config.enabled === false) return { status: 'disabled' };
     const paneId = event.data.pane_id;
-    if (signal === 'done') return await clearOnExit({ paneId, dir, call });
+    if (signal === 'done' || exited) return await clearOnExit({ paneId, dir, call });
     const lock = join(dir, `pane-${key(paneId)}.lock`);
     try { await mkdir(lock); } catch { return { status: 'busy' }; }
     try {

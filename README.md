@@ -40,7 +40,7 @@ A title from a prompt is at most six words. Unclear prose is skipped rather than
 
 ### Keeps up when the task changes
 
-Give the agent a new task and its title follows. A first guess from the repository name is upgraded as soon as the agent's prompt can be read.
+Give the agent a new task and its title follows. A first guess from the repository name is upgraded as soon as the agent's prompt can be read. When the agent exits, its title is cleared.
 
 <p align="center">
   <img src="docs/task-change.png" alt="The same Claude Code pane before and after a new task: its title changes from Fix login redirect bug to Add a test for the admin" width="820" />

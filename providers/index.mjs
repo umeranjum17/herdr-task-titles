@@ -1,6 +1,6 @@
 // Provider registry. The naming logic calls promptFor(ref) and never knows
 // which client a session came from. Adding a provider means adding one
-// adapter file and one line here — see README "Adding a provider".
+// adapter file and one line here — see README "Development".
 import { claudeAdapter } from './claude.mjs';
 import { codexAdapter } from './codex.mjs';
 import { opencodeAdapter } from './opencode.mjs';

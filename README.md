@@ -55,7 +55,7 @@ Give the agent a new task and its title follows. A first guess from the reposito
 
 You need [Herdr](https://herdr.dev) 0.8.0 or newer and [Node.js](https://nodejs.org/) 20 or newer, on Linux or macOS.
 
-Current release: [v0.2.1](https://github.com/umeranjum17/herdr-task-titles/releases/latest) (at the time of writing). This plugin ships no binary assets, so there are no sizes or checksums; it installs from source with the command below. See all [releases](https://github.com/umeranjum17/herdr-task-titles/releases).
+Latest release: [herdr-task-titles releases](https://github.com/umeranjum17/herdr-task-titles/releases/latest). This plugin ships no binary assets, so there are no sizes or checksums; it installs from source with the command below. See all [releases](https://github.com/umeranjum17/herdr-task-titles/releases).
 
 ```sh
 herdr plugin install umeranjum17/herdr-task-titles

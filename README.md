@@ -12,7 +12,7 @@
   A <a href="https://herdr.dev">Herdr</a> plugin that makes a screen full of agents easy to tell apart. Each new agent gets a short name you can say out loud, and each pane is titled with what its agent is working on, read from the task you gave it.
 </p>
 
-<h3 align="center"><a href="#install"><ins>Install</ins></a></h3>
+<h3 align="center"><a href="#download--install"><ins>Install</ins></a></h3>
 
 <p align="center">
   <img src="docs/herd.png" alt="Herdr with three agents named romeo, xray and papa in the sidebar; their panes are titled Fix checkout total rounding in cart.js, Fix login redirect bug, and Csv export" width="960" />
@@ -51,12 +51,20 @@ Give the agent a new task and its title follows. A first guess from the reposito
 - **Local only.** Prompts are read from the agent's own session files on your machine. No network calls, no npm dependencies.
 - **Plays fair.** If another naming or task-title plugin is enabled, this one leaves titles to it. Use one at a time.
 
-## Install
+## Download / Install
 
 You need [Herdr](https://herdr.dev) 0.8.0 or newer and [Node.js](https://nodejs.org/) 20 or newer, on Linux or macOS.
 
+Current release: [v0.2.1](https://github.com/umeranjum17/herdr-task-titles/releases/latest) (at the time of writing). This plugin ships no binary assets, so there are no sizes or checksums; it installs from source with the command below. See all [releases](https://github.com/umeranjum17/herdr-task-titles/releases).
+
 ```sh
 herdr plugin install umeranjum17/herdr-task-titles
+```
+
+Update an existing install with:
+
+```sh
+herdr plugin install --yes umeranjum17/herdr-task-titles
 ```
 
 Then:

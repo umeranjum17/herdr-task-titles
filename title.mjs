@@ -50,13 +50,13 @@ export function titleCandidate(sample) {
     }
     const titled = (priority) => candidates.filter((c) => c.priority === priority).map(({ sentence }) => titleFromSentence(sentence)).find(Boolean);
     const intent = titled(3) ?? titled(2);
-    if (intent) return { title: intent, confidence: 'clear task', source: 'first task prompt' };
+    if (intent) return { title: intent, confidence: 'clear task', source: 'task prompt' };
     // A launch brief names its task branch; that beats a stray imperative
     // from the brief's scaffolding ("Fix both in the plugin").
     const branch = titleFromBranch(/\bgit (?:checkout -b|switch -c) ([\w./-]+)/.exec(sample.slice(0, 65536))?.[1]);
     if (branch) return { ...branch, source: 'launch brief' };
     const title = titled(1);
-    return title ? { title, confidence: 'clear task', source: 'first task prompt' }
+    return title ? { title, confidence: 'clear task', source: 'task prompt' }
         : { confidence: 'ambiguous', reason: 'No clear task request in this prompt.' };
 }
 

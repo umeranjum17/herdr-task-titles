@@ -1,5 +1,6 @@
 // Herdr event hook: one serialized, fail-closed title per bound agent
-// generation, refreshed while the agent lives when its task changes. Standalone: no host RPC, no settings UI. `settings.json` holds
+// generation, refreshed while the agent lives when its task changes and
+// cleared when it exits. Standalone: no host RPC, no settings UI. `settings.json` holds
 // `{ "enabled": true|false, "names": "nato"|"elements"|"off" }`; `outcome.json` holds the latest result.
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
@@ -121,13 +122,40 @@ async function outcome(dir, result) {
     return result;
 }
 
+// The agent exited (`done` on the subscribed status event): clear the title
+// we published so the pane falls back to the agent's name. A title that is
+// no longer ours (manual rename, another writer) is left alone, as is a
+// pane that already shows nothing. The session may already be unbound, so
+// this checks the live titles directly instead of the bound generation.
+async function clearOnExit({ paneId, dir, call }) {
+    const lock = join(dir, `pane-${key(paneId)}.lock`);
+    try { await mkdir(lock); } catch { return { status: 'busy' }; }
+    try {
+        const prior = await load(join(dir, `pane-${key(paneId)}.json`), undefined);
+        if (!prior?.title) return { status: 'already handled' };
+        let pane;
+        try { pane = json(await call(['pane', 'get', paneId])).pane; }
+        catch { return await outcome(dir, { status: 'unavailable', reason: 'Pane is gone.' }); }
+        let agent;
+        try { agent = json(await call(['agent', 'get', paneId])).agent; } catch { agent = undefined; }
+        const shown = [pane?.title, agent?.title].filter((title) => title?.trim());
+        if (!shown.length || !shown.every((title) => title.trim() === prior.title)) return { status: 'already handled' };
+        await call(['pane', 'report-metadata', paneId, '--source', SOURCE, '--clear-title']);
+        return await outcome(dir, { status: 'cleared', title: prior.title });
+    } catch (error) {
+        return await outcome(dir, { status: 'unavailable', reason: error instanceof Error ? error.message.slice(0, 120) : 'Herdr unavailable.' });
+    } finally { await rm(lock, { recursive: true, force: true }); }
+}
+
 /** Herdr event hook: one serialized, fail-closed title per bound agent generation, refreshed on task change. */
 export async function handleStatus({ event, configDir, call = herdr, readPrompt = promptFor, readBranch = gitBranch }) {
-    if (event?.data?.agent_status !== 'working' || typeof event.data.pane_id !== 'string') return { status: 'ignored' };
+    const signal = event?.data?.agent_status;
+    if (typeof event?.data?.pane_id !== 'string' || (signal !== 'working' && signal !== 'done')) return { status: 'ignored' };
     const dir = await privateDirectory(configDir);
     const config = await load(join(dir, 'settings.json'), { enabled: true });
     if (config.enabled === false) return { status: 'disabled' };
     const paneId = event.data.pane_id;
+    if (signal === 'done') return await clearOnExit({ paneId, dir, call });
     const lock = join(dir, `pane-${key(paneId)}.lock`);
     try { await mkdir(lock); } catch { return { status: 'busy' }; }
     try {
@@ -144,7 +172,7 @@ export async function handleStatus({ event, configDir, call = herdr, readPrompt 
         const claimed = await load(marker, undefined);
         const prior = await load(join(dir, `pane-${key(paneId)}.json`), undefined);
         // A published title is refreshed when the agent's task changes: a
-        // new first prompt in the same session, or a new session replacing
+        // new latest prompt in the same session, or a new session replacing
         // our own stale title in the same pane.
         const owner = claimed ? (snap) => ownPublishedTitle(snap, claimed)
             : (snap) => initialOwner(snap) || ownPriorTitle(snap, prior);
@@ -176,11 +204,11 @@ export async function handleStatus({ event, configDir, call = herdr, readPrompt 
             const cwd = before.pane.foreground_cwd ?? before.pane.cwd;
             candidate = titleFromBranch(await readBranch(cwd).catch(() => undefined)) ?? titleFromRepo(cwd) ?? candidate;
         }
-        if (!candidate?.title) return await outcome(dir, { status: 'needs title', reason: candidate?.reason ?? 'No first task prompt was available.' });
+        if (!candidate?.title) return await outcome(dir, { status: 'needs title', reason: candidate?.reason ?? 'No task prompt was available.' });
         // Same title, a weaker guess, or an unchanged prompt: nothing to do.
         if (claimed && (candidate.title === claimed.title
             || (CONFIDENCE_RANK[candidate.confidence] ?? 0) < (CONFIDENCE_RANK[claimed.confidence] ?? 0)
-            || promptHash === claimed.prompt)) return { status: 'already handled' };
+            || (promptHash != null && promptHash === claimed.prompt))) return { status: 'already handled' };
         // The plugin registry, agent generation, title, and pane label are all
         // checked again under our lock immediately before the non-atomic write.
         // A change that leaves the pane ours (the agent was just named) gets

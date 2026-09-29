@@ -1,7 +1,7 @@
 // codex: find the session jsonl under the codex sessions dir, then scan it.
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { firstTaskPrompt, readTranscript, safePrompt, textBlocks } from './common.mjs';
+import { lastTaskPrompt, readTranscript, safePrompt, textBlocks } from './common.mjs';
 
 function userPrompts(jsonl) {
     const prompts = [];
@@ -41,6 +41,6 @@ export const codexAdapter = {
         if (!path) return undefined;
         const jsonl = await readTranscript(path);
         if (!jsonl) return undefined;
-        return firstTaskPrompt(userPrompts(jsonl));
+        return lastTaskPrompt(userPrompts(jsonl));
     }),
 };

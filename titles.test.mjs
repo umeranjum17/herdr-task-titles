@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { titleCandidate, titleFromBranch, titleFromRepo } from './title.mjs';
 import { handleStatus } from './runtime.mjs';
 import { promptFor } from './providers/index.mjs';
-import { firstPromptFromMessages, opencodeAdapter } from './providers/opencode.mjs';
+import { lastPromptFromMessages, opencodeAdapter } from './providers/opencode.mjs';
 
 const root = await mkdtemp(join(tmpdir(), 'herdr-task-titles-'));
 const configDir = join(root, 'herdr.task-titles');
@@ -24,8 +24,13 @@ function rig({ label = null, title = null, session = 'generation-one', agent = '
         if (args[0] === 'agent' && args[1] === 'get') return JSON.stringify({ result: { agent: dbAgent } });
         if (args[0] === 'pane' && args[1] === 'report-metadata') {
             writes.push(args);
-            pane.title = args[args.indexOf('--title') + 1];
-            dbAgent.title = pane.title;
+            if (args.includes('--clear-title')) {
+                pane.title = '';
+                dbAgent.title = '';
+            } else {
+                pane.title = args[args.indexOf('--title') + 1];
+                dbAgent.title = pane.title;
+            }
             return '{}';
         }
         throw new Error(`unexpected Herdr call: ${args.join(' ')}`);
@@ -36,10 +41,11 @@ function rig({ label = null, title = null, session = 'generation-one', agent = '
 const codexTranscript = [
     { type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '# AGENTS.md\nRules' }] } },
     { type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Fix the auth redirect bug in login flow' }] } },
+    { type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Add dark mode to the Settings page' }] } },
 ].map(JSON.stringify).join('\n');
 
 describe('task titles', () => {
-    it('takes the first real task once and leaves manual ownership alone', async () => {
+    it('takes the latest real task once and leaves manual ownership alone', async () => {
         const { agent, pane, writes, call, event } = rig();
         const readPrompt = async () => 'Fix the auth redirect bug in login flow';
 
@@ -57,6 +63,13 @@ describe('task titles', () => {
         assert.equal((await handleStatus({ event, configDir, call, readPrompt })).status, 'already handled');
         assert.equal(writes.length, 1);
         assert.equal(agent.title, 'My manual task');
+    });
+
+    it('publishes titles without expiry so long-lived agents keep them', async () => {
+        const { writes, call, event } = rig({ session: 'no-expiry' });
+        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'Fix the auth bug' })).status, 'titled');
+        assert.equal(writes.length, 1);
+        assert(!writes[0].includes('--ttl-ms'), 'title report must not carry a TTL');
     });
 
     it('keeps task titles on when only the name set is configured', async () => {
@@ -129,8 +142,51 @@ describe('task titles', () => {
         const second = await handleStatus({ event, configDir, call, readPrompt: async () => 'Fix the auth redirect bug in login flow', readBranch });
         assert.equal(second.title, 'Fix auth redirect bug');
         assert.equal(agent.title, 'Fix auth redirect bug');
-        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'Add dark mode', readBranch })).status, 'already handled');
         assert.equal(writes.length, 2);
+    });
+
+    it('refreshes the title when the same session reports a new task', async () => {
+        const { agent, writes, call, event } = rig({ session: 'changed-task' });
+        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'Fix the auth redirect bug in login flow' })).title, 'Fix auth redirect bug');
+        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'Fix the auth redirect bug in login flow' })).status, 'already handled');
+        const refreshed = await handleStatus({ event, configDir, call, readPrompt: async () => 'Add dark mode' });
+        assert.equal(refreshed.status, 'titled');
+        assert.equal(refreshed.title, 'Add dark mode');
+        assert.equal(agent.title, 'Add dark mode');
+        assert.equal(writes.length, 2);
+        assert(writes.every((args) => !args.includes('--ttl-ms')), 'refresh must not reintroduce a TTL');
+    });
+
+    it('lets a new session replace our own stale title in the same pane', async () => {
+        const first = rig({ session: 'stale-session' });
+        assert.equal((await handleStatus({ event: first.event, configDir, call: first.call, readPrompt: async () => 'Fix the auth redirect bug in login flow' })).status, 'titled');
+        const second = rig({ session: 'next-session', title: 'Fix auth redirect bug', label: null });
+        second.pane.title = 'Fix auth redirect bug';
+        const result = await handleStatus({ event: second.event, configDir, call: second.call, readPrompt: async () => 'Add dark mode' });
+        assert.equal(result.status, 'titled');
+        assert.equal(result.title, 'Add dark mode');
+        assert.equal(second.writes.length, 1);
+    });
+
+    it('clears its own title when the agent exits and leaves foreign titles alone', async () => {
+        const { pane, agent, writes, call, event } = rig({ session: 'exiting-agent' });
+        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'Fix the auth redirect bug in login flow' })).status, 'titled');
+        assert.equal(writes.length, 1);
+        const done = { data: { pane_id: 'lab:p1', agent_status: 'done' } };
+        const cleared = await handleStatus({ event: done, configDir, call });
+        assert.equal(cleared.status, 'cleared');
+        assert.equal(cleared.title, 'Fix auth redirect bug');
+        assert(writes.some((args) => args.includes('--clear-title')), 'exit must clear the published title');
+        assert.equal(pane.title, '');
+        assert.equal(agent.title, '');
+        assert.equal((await handleStatus({ event: done, configDir, call })).status, 'already handled');
+
+        pane.title = 'My manual task';
+        agent.title = 'My manual task';
+        const before = writes.length;
+        assert.equal((await handleStatus({ event: done, configDir, call })).status, 'already handled');
+        assert.equal(writes.length, before);
+        assert.equal(pane.title, 'My manual task');
     });
 
     it('yields to other naming plugins and fails closed offline', async () => {
@@ -155,12 +211,12 @@ describe('task titles', () => {
 });
 
 describe('provider adapters', () => {
-    it('codex reads the first real task from a session file', async () => {
+    it('codex reads the latest real task from a session file', async () => {
         const dir = await mkdtemp(join(tmpdir(), 'codex-'));
         try {
             await writeFile(join(dir, 'abc12345.jsonl'), codexTranscript);
             const prompt = await promptFor({ agent: 'codex', value: 'abc12345' }, { ...process.env, CODEX_HOME: dir });
-            assert.equal(prompt, 'Fix the auth redirect bug in login flow');
+            assert.equal(prompt, 'Add dark mode to the Settings page');
         } finally { await rm(dir, { recursive: true, force: true }); }
     });
 
@@ -171,16 +227,18 @@ describe('provider adapters', () => {
             await writeFile(piFile, [
                 JSON.stringify({ type: 'message', message: { role: 'user', content: 'FIRSTMATE_OP: v1 launch-brief: noise' } }),
                 JSON.stringify({ type: 'message', message: { role: 'user', content: 'Add dark mode to the Settings page' } }),
+                JSON.stringify({ type: 'message', message: { role: 'user', content: 'Write release notes for version 0.3' } }),
             ].join('\n'));
-            assert.equal(await promptFor({ agent: 'pi', value: piFile }), 'Add dark mode to the Settings page');
+            assert.equal(await promptFor({ agent: 'pi', value: piFile }), 'Write release notes for version 0.3');
 
             const projects = join(dir, 'projects', 'proj');
             await mkdir(projects, { recursive: true });
             await writeFile(join(projects, 'sess-9911.jsonl'), [
                 JSON.stringify({ type: 'user', message: { content: 'Repair the checkout race condition' } }),
+                JSON.stringify({ type: 'user', message: { content: 'Add dark mode to the Settings page' } }),
             ].join('\n'));
             const prompt = await promptFor({ agent: 'claude', value: 'sess-9911' }, { ...process.env, CLAUDE_CONFIG_DIR: join(dir, 'projects') });
-            assert.equal(prompt, 'Repair the checkout race condition');
+            assert.equal(prompt, 'Add dark mode to the Settings page');
         } finally { await rm(dir, { recursive: true, force: true }); }
     });
 
@@ -195,9 +253,10 @@ describe('provider adapters', () => {
             { role: 'user', parts: [{ type: 'step-start' }, { type: 'text', text: 'FIRSTMATE_OP: v1 launch-brief: noise' }] },
             { role: 'assistant', parts: [{ type: 'text', text: 'working on it' }] },
             { role: 'user', parts: [{ type: 'text', text: 'Investigate the slow query on dashboards' }] },
+            { role: 'user', parts: [{ type: 'text', text: 'Add dark mode to the Settings page' }] },
         ];
-        assert.equal(firstPromptFromMessages(messages), 'Investigate the slow query on dashboards');
-        assert.equal(firstPromptFromMessages([{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }]), undefined);
+        assert.equal(lastPromptFromMessages(messages), 'Add dark mode to the Settings page');
+        assert.equal(lastPromptFromMessages([{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }]), undefined);
     });
 
     it('opencode reads a real session database', async () => {

@@ -1,5 +1,5 @@
 // Shared helpers for transcript adapters. An adapter is `{ id, label,
-// promptFor(ref) }`: given a Herdr agent session, return the first real task
+// promptFor(ref) }`: given a Herdr agent session, return the latest real task
 // prompt or undefined. Adapters never throw; absent or unreadable providers
 // resolve to undefined and the caller falls back.
 import { readFile, stat } from 'node:fs/promises';
@@ -17,14 +17,15 @@ export function isBoilerplate(prompt) {
     return /^(?:# AGENTS\.md|<INSTRUCTIONS>|<user_instructions>|<environment_context>|<command-|<local-command)/.test(prompt.replace(/\p{Cf}/gu, '').trim());
 }
 
-/** First user text that states a real task, else undefined. */
-export function firstTaskPrompt(prompts) {
+/** Latest user text that states a real task, else undefined. */
+export function lastTaskPrompt(prompts) {
+    let latest;
     for (const prompt of prompts) {
         if (!prompt || isBoilerplate(prompt)) continue;
         if (!titleCandidate(prompt).title) continue;
-        return prompt;
+        latest = prompt;
     }
-    return undefined;
+    return latest;
 }
 
 /** Bounded transcript read: regular files only, 2MB cap. */

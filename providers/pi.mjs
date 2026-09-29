@@ -1,6 +1,6 @@
 // pi: the session ref is a direct transcript path. Nothing to search.
 import { isAbsolute } from 'node:path';
-import { firstTaskPrompt, readTranscript, safePrompt, textBlocks } from './common.mjs';
+import { lastTaskPrompt, readTranscript, safePrompt, textBlocks } from './common.mjs';
 
 function userPrompts(jsonl) {
     const prompts = [];
@@ -21,6 +21,6 @@ export const piAdapter = {
         if (!isAbsolute(ref?.value ?? '')) return undefined;
         const jsonl = await readTranscript(ref.value);
         if (!jsonl) return undefined;
-        return firstTaskPrompt(userPrompts(jsonl));
+        return lastTaskPrompt(userPrompts(jsonl));
     }),
 };

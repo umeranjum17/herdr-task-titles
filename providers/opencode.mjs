@@ -1,11 +1,11 @@
 // opencode: sessions live in a sqlite db, not jsonl. User text is assembled
-// from the text parts of the first user message. Reads open the db
+// from the text parts of the latest user message. Reads open the db
 // immutable/read-only and never write.
 import { execFile } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { firstTaskPrompt, safePrompt } from './common.mjs';
+import { lastTaskPrompt, safePrompt } from './common.mjs';
 
 const exec = promisify(execFile);
 
@@ -22,9 +22,9 @@ export function userTextFromParts(parts) {
         .join('\n');
 }
 
-/** Pure: first task prompt from ordered [{ role, parts }] messages. */
-export function firstPromptFromMessages(messages) {
-    return firstTaskPrompt(
+/** Pure: latest task prompt from ordered [{ role, parts }] messages. */
+export function lastPromptFromMessages(messages) {
+    return lastTaskPrompt(
         (messages ?? []).filter((message) => message?.role === 'user').map((message) => userTextFromParts(message.parts)),
     );
 }
@@ -38,13 +38,14 @@ async function viaBuiltin(path, sessionId) {
     const db = new DatabaseSync(`file:${path}?immutable=1`, { readOnly: true });
     try {
         const messages = db.prepare(
-            'SELECT id, data FROM message WHERE session_id = ? ORDER BY time_created, id LIMIT 50',
-        ).all(sessionId);
+            'SELECT id, data FROM message WHERE session_id = ? ORDER BY time_created DESC, id DESC LIMIT 50',
+        ).all(sessionId).reverse();
         const partsByMessage = new Map();
         if (messages.length) {
+            const placeholders = messages.map(() => '?').join(',');
             const parts = db.prepare(
-                'SELECT message_id, data FROM part WHERE session_id = ? ORDER BY time_created, id LIMIT 500',
-            ).all(sessionId);
+                `SELECT message_id, data FROM part WHERE message_id IN (${placeholders}) ORDER BY time_created, id LIMIT 500`,
+            ).all(...messages.map((message) => message.id));
             for (const part of parts) {
                 const data = parseJson(part.data);
                 if (!data) continue;
@@ -61,11 +62,11 @@ async function viaBuiltin(path, sessionId) {
 async function viaCli(path, sessionId) {
     const run = (sql) => exec('sqlite3', [`file:${path}?immutable=1`, sql], { timeout: 5000, maxBuffer: 4 * 1024 * 1024 });
     const ids = parseJson((await run(
-        `SELECT json_group_array(id) FROM (SELECT id FROM message WHERE session_id = '${sessionId}' ORDER BY time_created, id LIMIT 50)`,
+        `SELECT json_group_array(id) FROM (SELECT id FROM message WHERE session_id = '${sessionId}' ORDER BY time_created DESC, id DESC LIMIT 50)`,
     )).stdout.trim()) ?? [];
     if (!Array.isArray(ids) || !ids.length) return [];
     const messages = [];
-    for (const id of ids) {
+    for (const id of ids.reverse()) {
         const data = parseJson((await run(`SELECT data FROM message WHERE id = '${id}'`)).stdout.trim());
         const rawParts = parseJson((await run(
             `SELECT json_group_array(data) FROM (SELECT data FROM part WHERE message_id = '${id}' ORDER BY time_created, id LIMIT 100)`,
@@ -87,6 +88,6 @@ export const opencodeAdapter = {
         } catch {
             messages = await viaCli(path, ref.value);
         }
-        return firstPromptFromMessages(messages);
+        return lastPromptFromMessages(messages);
     }),
 };

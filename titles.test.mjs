@@ -189,6 +189,38 @@ describe('task titles', () => {
         assert.equal(pane.title, 'My manual task');
     });
 
+    it('clears its own title when the detector releases the agent or the pane exits', async () => {
+        const { pane, agent, writes, call, event } = rig({ session: 'released-agent' });
+        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'Fix the auth redirect bug in login flow' })).status, 'titled');
+        // A plain detection (agent still there) must not touch anything.
+        const before = writes.length;
+        assert.equal((await handleStatus({ event: { data: { pane_id: 'lab:p1', type: 'pane_agent_detected', agent: 'codex', released: false } }, configDir, call })).status, 'ignored');
+        assert.equal(writes.length, before);
+        // The detector released the agent: the pane keeps our title, the agent record is gone.
+        agent.title = undefined;
+        const released = { data: { pane_id: 'lab:p1', type: 'pane_agent_detected', agent: null, released: true } };
+        const cleared = await handleStatus({ event: released, configDir, call });
+        assert.equal(cleared.status, 'cleared');
+        assert.equal(cleared.title, 'Fix auth redirect bug');
+        assert(writes.some((args) => args.includes('--clear-title')), 'release must clear the published title');
+        assert.equal(pane.title, '');
+        assert.equal((await handleStatus({ event: released, configDir, call })).status, 'already handled');
+
+        // Same clearing when the pane process exits, even without a release flag.
+        const second = rig({ session: 'exited-pane' });
+        assert.equal((await handleStatus({ event: second.event, configDir, call: second.call, readPrompt: async () => 'Add dark mode' })).status, 'titled');
+        const exited = { data: { pane_id: 'lab:p1', type: 'pane_exited', workspace_id: 'w1' } };
+        assert.equal((await handleStatus({ event: exited, configDir, call: second.call })).status, 'cleared');
+        assert.equal(second.pane.title, '');
+        assert(second.writes.some((args) => args.includes('--clear-title')), 'exit must clear the published title');
+
+        // A null agent outside a status event also signals the agent is gone.
+        const third = rig({ session: 'null-agent' });
+        assert.equal((await handleStatus({ event: third.event, configDir, call: third.call, readPrompt: async () => 'Fix the auth bug' })).status, 'titled');
+        assert.equal((await handleStatus({ event: { data: { pane_id: 'lab:p1', agent: null } }, configDir, call: third.call })).status, 'cleared');
+        assert.equal(third.pane.title, '');
+    });
+
     it('yields to other naming plugins and fails closed offline', async () => {
         const { writes, state, call, event } = rig({ session: 'generation-three' });
         state.writers = [{ plugin_id: 'herdr-plugin-renamer', name: 'Herdr Renamer', enabled: true, source: { kind: 'github' } }];

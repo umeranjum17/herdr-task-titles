@@ -9,9 +9,16 @@ description = "Give each agent a short, speakable name and each task a short, re
 on = "pane.agent_status_changed"
 command = ["node", "hook.mjs"]
 
+# agent_detected fires when an agent appears (name it) and when the detector
+# releases one (clear its title): the full hook tells the two apart.
 [[events]]
 on = "pane.agent_detected"
-command = ["node", "hook.mjs", "name"]
+command = ["node", "hook.mjs"]
+
+# The agent's process exited; its pane may live on with our title.
+[[events]]
+on = "pane.exited"
+command = ["node", "hook.mjs"]
 
 # agent_detected can fire before the agent is listed; focus catches the stragglers.
 [[events]]

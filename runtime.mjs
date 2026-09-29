@@ -1,5 +1,5 @@
-// Herdr event hook: one serialized, fail-closed title attempt per bound agent
-// generation. Standalone: no host RPC, no settings UI. `settings.json` holds
+// Herdr event hook: one serialized, fail-closed title per bound agent
+// generation, refreshed while the agent lives when its task changes. Standalone: no host RPC, no settings UI. `settings.json` holds
 // `{ "enabled": true|false, "names": "nato"|"elements"|"off" }`; `outcome.json` holds the latest result.
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
@@ -15,6 +15,10 @@ const SOURCE = 'plugin:herdr.task-titles';
 // agent identity names, so it can coexist.
 const WRITERS = /(?:renam|auto.?nam|task.?title)/i;
 const DEFAULT_LABELS = new Set(['', 'Shell', 'Terminal', 'Agent', 'Claude', 'Codex', 'Pi', 'Opencode']);
+// Confidence ladder for a derived title: a refresh or upgrade only ever
+// replaces a published title with one at least this strong, never a weaker
+// guess over a stronger one.
+const CONFIDENCE_RANK = { 'repo name': 0, 'task branch': 1, 'clear task': 2 };
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function herdr(args) {
@@ -85,10 +89,21 @@ function initialOwner({ pane, agent }) {
     return !title && !paneTitle && DEFAULT_LABELS.has(label);
 }
 
-// Our own repo-name title may still be upgraded: nobody else wrote over it.
-function ownRepoTitle({ pane, agent }, claimed) {
-    return claimed?.status === 'published' && claimed.confidence === 'repo name' && DEFAULT_LABELS.has(pane.label?.trim() ?? '')
+// A title we published is still ours while neither the agent nor the pane
+// title was changed to something else and the label is still default. This
+// covers both the upgrade path (repo-name guess replaced once the prompt is
+// readable) and refreshes (a new task in the same session).
+function ownPublishedTitle({ pane, agent }, claimed) {
+    return claimed?.status === 'published' && DEFAULT_LABELS.has(pane.label?.trim() ?? '')
         && [agent.title, pane.title].every((title) => !title?.trim() || title.trim() === claimed.title);
+}
+
+// Our own stale title from a previous agent session in the same pane: the
+// pane is still ours, so a new generation may replace it. Anything else
+// (including a manual rename) stays owned elsewhere.
+function ownPriorTitle({ pane, agent }, prior) {
+    return !!prior?.title && DEFAULT_LABELS.has(pane.label?.trim() ?? '')
+        && [agent.title, pane.title].every((title) => !title?.trim() || title.trim() === prior.title);
 }
 
 async function writers(call) {
@@ -106,7 +121,7 @@ async function outcome(dir, result) {
     return result;
 }
 
-/** Herdr event hook: one serialized, fail-closed title attempt per bound agent generation. */
+/** Herdr event hook: one serialized, fail-closed title per bound agent generation, refreshed on task change. */
 export async function handleStatus({ event, configDir, call = herdr, readPrompt = promptFor, readBranch = gitBranch }) {
     if (event?.data?.agent_status !== 'working' || typeof event.data.pane_id !== 'string') return { status: 'ignored' };
     const dir = await privateDirectory(configDir);
@@ -126,24 +141,34 @@ export async function handleStatus({ event, configDir, call = herdr, readPrompt 
         }
         if (!before) return await outcome(dir, { status: 'unavailable', reason: 'Agent session is not bound.' });
         const marker = join(dir, `generation-${before.generation}.json`);
-        // A repo-name title is a guess made when the prompt was not readable
-        // yet; a later working event gets one chance to replace it.
         const claimed = await load(marker, undefined);
-        const owner = claimed ? (snap) => ownRepoTitle(snap, claimed) : initialOwner;
+        const prior = await load(join(dir, `pane-${key(paneId)}.json`), undefined);
+        // A published title is refreshed when the agent's task changes: a
+        // new first prompt in the same session, or a new session replacing
+        // our own stale title in the same pane.
+        const owner = claimed ? (snap) => ownPublishedTitle(snap, claimed)
+            : (snap) => initialOwner(snap) || ownPriorTitle(snap, prior);
         if (claimed && !owner(before)) return { status: 'already handled' };
         if (!owner(before)) return await outcome(dir, { status: 'owned elsewhere', reason: 'An existing title or pane label is already in use.' });
-        const attemptFile = join(dir, `attempts-${before.generation}.json`);
-        const attempts = await load(attemptFile, { count: 0 });
-        if (!Number.isInteger(attempts.count) || attempts.count < 0 || attempts.count >= 2) {
-            return { status: 'needs title', reason: 'Automatic title attempts are complete for this task.' };
+        if (!claimed) {
+            const attemptFile = join(dir, `attempts-${before.generation}.json`);
+            const attempts = await load(attemptFile, { count: 0 });
+            if (!Number.isInteger(attempts.count) || attempts.count < 0 || attempts.count >= 2) {
+                return { status: 'needs title', reason: 'Automatic title attempts are complete for this task.' };
+            }
+            await save(attemptFile, { count: attempts.count + 1 });
         }
-        await save(attemptFile, { count: attempts.count + 1 });
+        // A generation titled from a real prompt needs only one quick
+        // re-read to detect a task change; the patient retry loop is for
+        // generations that never saw a prompt yet (upgrade path).
         let prompt;
-        for (let attempt = 0; attempt < 12; attempt++) {
+        const retries = claimed?.prompt == null ? 12 : 1;
+        for (let attempt = 0; ; attempt++) {
             prompt = await readPrompt(before.ref).catch(() => undefined);
-            if (prompt) break;
+            if (prompt || attempt + 1 >= retries) break;
             await wait(250);
         }
+        const promptHash = prompt ? displayHash(prompt) : null;
         let candidate = prompt ? titleCandidate(prompt) : undefined;
         // Weakest signal last: the repo directory. Still better than a
         // generic "Shell" label; anything worse leaves the name alone.
@@ -152,7 +177,10 @@ export async function handleStatus({ event, configDir, call = herdr, readPrompt 
             candidate = titleFromBranch(await readBranch(cwd).catch(() => undefined)) ?? titleFromRepo(cwd) ?? candidate;
         }
         if (!candidate?.title) return await outcome(dir, { status: 'needs title', reason: candidate?.reason ?? 'No first task prompt was available.' });
-        if (claimed && (candidate.confidence === 'repo name' || candidate.title === claimed.title)) return { status: 'already handled' };
+        // Same title, a weaker guess, or an unchanged prompt: nothing to do.
+        if (claimed && (candidate.title === claimed.title
+            || (CONFIDENCE_RANK[candidate.confidence] ?? 0) < (CONFIDENCE_RANK[claimed.confidence] ?? 0)
+            || promptHash === claimed.prompt)) return { status: 'already handled' };
         // The plugin registry, agent generation, title, and pane label are all
         // checked again under our lock immediately before the non-atomic write.
         // A change that leaves the pane ours (the agent was just named) gets
@@ -167,14 +195,17 @@ export async function handleStatus({ event, configDir, call = herdr, readPrompt 
             before = current;
         }
         if ((await load(join(dir, 'settings.json'), { enabled: true })).enabled === false) return { status: 'disabled' };
-        // A durable claim precedes the non-atomic Herdr write. If the process
-        // dies after Herdr accepts it, reconnect cannot publish a second time.
+        // No --ttl-ms: Herdr keeps metadata without a TTL until it is
+        // replaced, cleared, or the pane closes, so a live agent's title
+        // never expires. A durable claim precedes the non-atomic Herdr
+        // write. If the process dies after Herdr accepts it, reconnect
+        // cannot publish a second time.
         await save(marker, { status: 'publishing', at: new Date().toISOString() });
         await call(['pane', 'report-metadata', paneId, '--source', SOURCE, '--title', candidate.title,
             '--token', `herdr_task_title_hash=${displayHash(candidate.title)}`,
-            '--token', `herdr_task_label_hash=${displayHash(before.pane.label ?? '')}`,
-            '--ttl-ms', '86400000']);
-        await save(marker, { status: 'published', title: candidate.title, source: SOURCE, confidence: candidate.confidence, at: new Date().toISOString() });
+            '--token', `herdr_task_label_hash=${displayHash(before.pane.label ?? '')}`]);
+        await save(marker, { status: 'published', title: candidate.title, source: SOURCE, confidence: candidate.confidence, prompt: promptHash, at: new Date().toISOString() });
+        await save(join(dir, `pane-${key(paneId)}.json`), { generation: before.generation, title: candidate.title, at: new Date().toISOString() });
         return await outcome(dir, { status: 'titled', title: candidate.title, confidence: candidate.confidence, source: candidate.source });
     } catch (error) {
         return await outcome(dir, { status: 'unavailable', reason: error instanceof Error ? error.message.slice(0, 120) : 'Herdr unavailable.' });

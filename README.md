@@ -13,7 +13,9 @@ delta     Checkout race
 
 Titles come from the task you gave the agent, its git branch, or its repo
 name. Everything runs locally, with no network calls and no dependencies.
-Names and titles you set yourself are never changed.
+Names and titles you set yourself are never changed. A title stays with its
+agent for as long as the pane lives, and is replaced when the agent's task
+changes.
 
 Works with pi, Claude Code, Codex and opencode.
 

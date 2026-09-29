@@ -59,6 +59,13 @@ describe('task titles', () => {
         assert.equal(agent.title, 'My manual task');
     });
 
+    it('publishes titles without expiry so long-lived agents keep them', async () => {
+        const { writes, call, event } = rig({ session: 'no-expiry' });
+        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'Fix the auth bug' })).status, 'titled');
+        assert.equal(writes.length, 1);
+        assert(!writes[0].includes('--ttl-ms'), 'title report must not carry a TTL');
+    });
+
     it('keeps task titles on when only the name set is configured', async () => {
         await writeFile(join(configDir, 'settings.json'), '{ "names": "elements" }');
         const { writes, call, event } = rig({ session: 'names-only-settings' });
@@ -129,8 +136,30 @@ describe('task titles', () => {
         const second = await handleStatus({ event, configDir, call, readPrompt: async () => 'Fix the auth redirect bug in login flow', readBranch });
         assert.equal(second.title, 'Fix auth redirect bug');
         assert.equal(agent.title, 'Fix auth redirect bug');
-        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'Add dark mode', readBranch })).status, 'already handled');
         assert.equal(writes.length, 2);
+    });
+
+    it('refreshes the title when the same session reports a new task', async () => {
+        const { agent, writes, call, event } = rig({ session: 'changed-task' });
+        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'Fix the auth redirect bug in login flow' })).title, 'Fix auth redirect bug');
+        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'Fix the auth redirect bug in login flow' })).status, 'already handled');
+        const refreshed = await handleStatus({ event, configDir, call, readPrompt: async () => 'Add dark mode' });
+        assert.equal(refreshed.status, 'titled');
+        assert.equal(refreshed.title, 'Add dark mode');
+        assert.equal(agent.title, 'Add dark mode');
+        assert.equal(writes.length, 2);
+        assert(writes.every((args) => !args.includes('--ttl-ms')), 'refresh must not reintroduce a TTL');
+    });
+
+    it('lets a new session replace our own stale title in the same pane', async () => {
+        const first = rig({ session: 'stale-session' });
+        assert.equal((await handleStatus({ event: first.event, configDir, call: first.call, readPrompt: async () => 'Fix the auth redirect bug in login flow' })).status, 'titled');
+        const second = rig({ session: 'next-session', title: 'Fix auth redirect bug', label: null });
+        second.pane.title = 'Fix auth redirect bug';
+        const result = await handleStatus({ event: second.event, configDir, call: second.call, readPrompt: async () => 'Add dark mode' });
+        assert.equal(result.status, 'titled');
+        assert.equal(result.title, 'Add dark mode');
+        assert.equal(second.writes.length, 1);
     });
 
     it('yields to other naming plugins and fails closed offline', async () => {

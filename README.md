@@ -15,7 +15,7 @@
 <h3 align="center"><a href="#download--install"><ins>Install</ins></a></h3>
 
 <p align="center">
-  <img src="docs/herd.png" alt="Herdr with three agents named romeo, xray and papa in the sidebar; their panes are titled Fix checkout total rounding in cart.js, Fix login redirect bug, and Csv export" width="960" />
+  <img src="docs/herd.png" alt="Herdr with three agents named checkout-rounding, fix-login-redirect and csv-export in the sidebar; their panes are titled Fix checkout total rounding in cart.js, Fix login redirect bug, and Csv export" width="960" />
 </p>
 
 ## Why it exists

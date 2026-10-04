@@ -48,6 +48,15 @@ describe('agent names', () => {
         h.restart();
         for (const pane of ['w1', 'w2', 'w3', 'w4', 'w5']) await name(pane, h);
         assert.deepEqual(h.agents.slice(0, 5).map((entry) => entry.name), ['mx-task-titles-naming1', 'fix-auth-redirect', 'csv-export', 'shop', 'shop-2']);
+        // Whichever pane Herdr reports first, each gets its own name back.
+        h.restart();
+        for (const pane of ['w5', 'w4', 'w1']) await name(pane, h);
+        assert.deepEqual(h.agents.slice(3, 5).map((entry) => entry.name), ['shop', 'shop-2']);
+        // A task id stays even when the worker leaves its fm/ branch.
+        branches['/work/fm'] = 'main';
+        assert.equal((await name('w1', h)).status, 'owned elsewhere');
+        assert.equal(h.agents[0].name, 'mx-task-titles-naming1');
+        branches['/work/fm'] = 'fm/mx-task-titles-naming1';
         // The title the plugin derives later upgrades a name it issued itself.
         h.agents[3].title = 'Add CSV export to reports';
         assert.deepEqual(await name('w4', h), { status: 'named', name: 'add-csv-export' });
@@ -65,13 +74,31 @@ describe('agent names', () => {
         assert.deepEqual(await name('m1', h), { status: 'named', name: 'crewhouse' });
         assert.deepEqual(await name('m2', h), { status: 'named', name: 'my manual name' });
         assert.equal((await name('m1', h)).status, 'owned elsewhere');
+        // A later agent in a reused pane id, on other work, starts fresh.
+        h.agents[1].cwd = '/home/umer/shop';
+        h.agents[1].name = '';
+        assert.equal((await name('m2', h)).name, 'shop');
     });
 
-    it('lets go of a random name from 0.2.x once it is lost', async () => {
-        const h = herd([{ ...agent('l1', 'papa'), cwd: '/work/fm' }]);
-        assert.equal((await name('l1', h)).status, 'owned elsewhere', 'a live name is left alone');
-        h.restart();
+    it('replaces the random words 0.2.x drew on its first run, keeping chosen names', async () => {
+        await rm(join(configDir, 'names.json'), { force: true });
+        const h = herd([{ ...agent('l1', 'papa'), cwd: '/work/fm' }, { ...agent('l2', 'crewhouse'), cwd: '/work/fm' }]);
         assert.deepEqual(await name('l1', h), { status: 'named', name: 'mx-task-titles-naming1' });
+        assert.equal((await name('l2', h)).status, 'owned elsewhere');
+        h.restart();
+        assert.deepEqual(await name('l2', h), { status: 'named', name: 'crewhouse' });
+    });
+
+    it('never overwrites a rename that lands while it works', async () => {
+        const h = herd([{ ...agent('t1', ''), cwd: '/home/umer/shop' }]);
+        const call = async (args) => {
+            const out = await h.call(args);
+            if (args[1] === 'list' && !h.agents[0].name) h.agents[0].name = 'firstmate-pick';
+            return out;
+        };
+        assert.equal((await name('t1', h, { call })).status, 'owned elsewhere');
+        assert.equal(h.agents[0].name, 'firstmate-pick');
+        assert.deepEqual(h.renames, []);
     });
 
     it('draws random words only when opted in, and keeps them across a restart', async () => {
@@ -83,7 +110,7 @@ describe('agent names', () => {
         assert.deepEqual(await name('r1', h, { random: () => 0.99 }), { status: 'named', name: 'bravo' }, 'the issued word comes back');
         h.agents[0].name = '';
         await writeFile(join(configDir, 'settings.json'), '{ "names": "elements" }');
-        assert.equal((await name('r1', h)).name, 'bravo', 'a changed set applies to new agents');
+        assert.equal((await name('r1', h)).name, 'gold', 'a relaunched agent takes a word from the new set');
         await writeFile(join(configDir, 'settings.json'), '{ "names": "off" }');
         assert.equal((await name('r1', h)).status, 'disabled');
         await writeFile(join(configDir, 'settings.json'), '{ "enabled": false }');
@@ -115,7 +142,7 @@ describe('agent names', () => {
         releaseList();
         assert.equal((await a).name, 'shop');
         assert.equal((await b).name, 'shop-2');
-        assert.equal(lists, 2);
+        assert.equal(lists, 4, 'one list and one re-read each');
     });
 
     it('recovers a leftover old naming lock', async () => {

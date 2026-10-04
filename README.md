@@ -109,7 +109,7 @@ Prefer random words you can say out loud? Choose a name set with `names`:
 | `elements` | neon, gold, zinc, cobalt, silver, helium … |
 | `off` | not at all; task titles still work |
 
-A changed set applies to new agents; existing names stay.
+A changed set applies to new and relaunched agents. Upgrading from 0.2.x, which drew `nato` words by default, replaces those words with names from the work; names you chose stay.
 
 ### Turn it off
 

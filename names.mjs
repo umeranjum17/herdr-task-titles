@@ -27,8 +27,8 @@ export const NAME_SETS = {
         'xray', 'yankee', 'zulu',
     ],
 };
-// Names 0.2.x drew at random before it kept a ledger: replaceable once lost,
-// never pinned as someone's choice.
+// Words 0.2.x drew at random before there was a ledger: on the first run
+// they are recognised as the plugin's own and replaced by work names.
 const LEGACY = new RegExp(`^(?:${Object.values(NAME_SETS).flat().join('|')})(?:-\\d+)?$`);
 
 // muxr hides its internal launch names, which is what surfaces as "Unnamed agent".
@@ -86,34 +86,52 @@ export async function nameAgent({ event, configDir, call = herdr, random = Math.
         const target = agents.find((agent) => agent?.pane_id === paneId);
         // Only name a real agent, never a plain shell pane.
         if (!target?.agent) return { status: 'ignored' };
-        // Ledger per pane (pane ids survive a Herdr restart): the name we
-        // issued, or the name a person or Firstmate chose, which always wins.
+        // Ledger per pane: its name, and whether that name is pinned (chosen
+        // by a person or Firstmate). Pane ids survive a Herdr restart; the
+        // cwd guards against a reused id or a relaunch into other work.
         const ledgerFile = join(dir, 'names.json');
-        const ledger = await load(ledgerFile, {});
-        const entry = ledger[paneId] ?? {};
+        let ledger = await load(ledgerFile, undefined);
+        if (!ledger) {
+            // First run: names already on screen were chosen by someone,
+            // except the random words 0.2.x drew, which stay ours to replace.
+            ledger = Object.fromEntries(agents.filter((agent) => agent?.agent && !needsName(agent.name ?? ''))
+                .map((agent) => [agent.pane_id, { name: agent.name, pinned: !LEGACY.test(agent.name), cwd: agent.cwd }]));
+            await save(ledgerFile, ledger);
+        }
+        const entry = (ledger[paneId]?.cwd === target.cwd && ledger[paneId]) || {};
         const current = target.name ?? '';
-        if (!needsName(current) && current !== entry.issued) {
-            const legacy = !entry.issued && !entry.manual && LEGACY.test(current);
-            if (current !== entry.manual && !legacy) {
-                ledger[paneId] = { manual: current };
+        if (!needsName(current) && (entry.pinned || current !== entry.name)) {
+            if (current !== entry.name) {
+                ledger[paneId] = { name: current, pinned: true, cwd: target.cwd };
                 await save(ledgerFile, ledger);
             }
             return { status: 'owned elsewhere' };
         }
-        const taken = new Set(agents.filter((agent) => agent?.pane_id !== paneId).map((agent) => agent?.name).filter(Boolean));
-        let name = entry.manual;
-        if (!name && set === 'work') {
+        // A blank pane keeps its pinned name reserved while Herdr restores names.
+        const taken = new Set(agents.filter((agent) => agent?.pane_id !== paneId)
+            .map((agent) => agent?.name || (ledger[agent?.pane_id]?.pinned ? ledger[agent.pane_id].name : '')).filter(Boolean));
+        const ours = (base) => entry.name && !taken.has(entry.name) && (entry.name === base || new RegExp(`^${base}-\\d+$`).test(entry.name));
+        let name = entry.name;
+        let pinned = !!entry.pinned;
+        if (!pinned && set === 'work') {
             const work = await workName(target, readBranch);
-            name = work.task ?? work.title ?? entry.issued ?? work.fallback;
-        } else if (!name) name = entry.issued && !taken.has(entry.issued) ? entry.issued : randomName(NAME_SETS[set], taken, random);
-        if (!name) return { status: 'needs name' };
-        if (!entry.manual) name = unique(name, taken);
-        if (name === current) return { status: 'already named', name };
-        await call(['agent', 'rename', paneId, name]);
-        if (!entry.manual) {
-            ledger[paneId] = { issued: name };
-            await save(ledgerFile, ledger);
+            const base = work.task ?? work.title ?? entry.name ?? work.fallback;
+            name = !base || ours(base) ? entry.name : unique(base, taken);
+            // A task id is the name Firstmate gives its worker: keep it.
+            pinned = !!name && name === work.task;
+        } else if (!pinned) {
+            name = ours(entry.name?.replace(/-\d+$/, '')) && NAME_SETS[set].includes(entry.name.replace(/-\d+$/, ''))
+                ? entry.name : randomName(NAME_SETS[set], taken, random);
         }
+        if (!name) return { status: 'needs name' };
+        if (name === current) return { status: 'already named', name };
+        // Herdr has no compare-and-set rename: re-read so a rename that
+        // landed meanwhile (Firstmate's, a person's) is not overwritten.
+        const now = json(await call(['agent', 'list'])).agents?.find((agent) => agent?.pane_id === paneId)?.name ?? '';
+        if (now !== current) return { status: 'owned elsewhere' };
+        await call(['agent', 'rename', paneId, name]);
+        ledger[paneId] = { name, pinned, cwd: target.cwd };
+        await save(ledgerFile, ledger);
         return { status: 'named', name };
     } finally { await rm(lock, { recursive: true, force: true }); }
 }

@@ -171,17 +171,24 @@ export async function handleStatus({ event, configDir, call = herdr, readPrompt 
     const paneId = event.data.pane_id;
     if (signal === 'done' || exited) return await clearOnExit({ paneId, dir, call });
     const lock = join(dir, `pane-${key(paneId)}.lock`);
-    try { await mkdir(lock); } catch { return { status: 'busy' }; }
+    const working = signal === 'working';
+    // A 'working' event waits out a restore check holding the lock; others give way.
+    for (let attempt = 0; ; attempt++) {
+        try { await mkdir(lock); break; } catch { if (!working || attempt >= 20) return { status: 'busy' }; }
+        await wait(250);
+    }
+    // Only 'working' results are worth recording; restore checks stay quiet.
+    const note = (result) => (working ? outcome(dir, result) : result);
     try {
         const active = await writers(call);
-        if (active.length) return await outcome(dir, { status: 'conflict', writers: active });
+        if (active.length) return await note({ status: 'conflict', writers: active });
         let before;
-        for (let attempt = 0; attempt < (signal === 'working' ? 6 : 1); attempt++) {
+        for (let attempt = 0; attempt < (working ? 6 : 1); attempt++) {
+            if (attempt) await wait(250);
             before = await snapshot(call, paneId).catch(() => undefined);
             if (before) break;
-            await wait(250);
         }
-        if (!before) return await outcome(dir, { status: 'unavailable', reason: 'Agent session is not bound.' });
+        if (!before) return await note({ status: 'unavailable', reason: 'Agent session is not bound.' });
         const marker = join(dir, `generation-${before.generation}.json`);
         const claimed = await load(marker, undefined);
         const prior = await load(join(dir, `pane-${key(paneId)}.json`), undefined);
@@ -194,13 +201,13 @@ export async function handleStatus({ event, configDir, call = herdr, readPrompt 
         // Herdr does not keep pane metadata across a restart: a resumed agent
         // gets the title it had back, unless we cleared it on purpose.
         const shown = [before.agent.title, before.pane.title].some((title) => title?.trim());
-        if (claimed?.status === 'published' && !shown && prior?.generation === before.generation && !prior.cleared) {
+        if (!working && claimed?.status === 'published' && !shown && prior?.generation === before.generation && !prior.cleared) {
             await call(['pane', 'report-metadata', paneId, '--source', SOURCE, '--title', claimed.title,
                 '--token', `herdr_task_title_hash=${displayHash(claimed.title)}`,
                 '--token', `herdr_task_label_hash=${displayHash(before.pane.label ?? '')}`]);
             return await outcome(dir, { status: 'restored', title: claimed.title });
         }
-        if (signal !== 'working') return { status: 'ignored' };
+        if (!working) return { status: 'ignored' };
         if (!owner(before)) return await outcome(dir, { status: 'owned elsewhere', reason: 'An existing title or pane label is already in use.' });
         if (!claimed) {
             const attemptFile = join(dir, `attempts-${before.generation}.json`);
@@ -220,7 +227,7 @@ export async function handleStatus({ event, configDir, call = herdr, readPrompt 
             if (prompt || attempt + 1 >= retries) break;
             await wait(250);
         }
-        const promptHash = prompt ? displayHash(prompt) : null;
+        let promptHash = prompt ? displayHash(prompt) : null;
         let candidate = prompt ? titleCandidate(prompt) : undefined;
         // Weakest signal last: the repo directory. Still better than a
         // generic "Shell" label; anything worse leaves the name alone.
@@ -229,10 +236,15 @@ export async function handleStatus({ event, configDir, call = herdr, readPrompt 
             candidate = titleFromBranch(await readBranch(cwd).catch(() => undefined)) ?? titleFromRepo(cwd) ?? candidate;
         }
         if (!candidate?.title) return await outcome(dir, { status: 'needs title', reason: candidate?.reason ?? 'No task prompt was available.' });
-        // Same title, a weaker guess, or an unchanged prompt: nothing to do,
-        // unless the pane shows no title at all.
+        // A weaker guess never replaces a stronger title: a blank pane gets
+        // the stronger title back. Same title or an unchanged prompt: nothing
+        // to do, unless the pane shows no title at all.
+        if (claimed && (CONFIDENCE_RANK[candidate.confidence] ?? 0) < (CONFIDENCE_RANK[claimed.confidence] ?? 0)) {
+            if (shown) return { status: 'already handled' };
+            candidate = { title: claimed.title, confidence: claimed.confidence, source: 'earlier task' };
+            promptHash = claimed.prompt;
+        }
         if (claimed && shown && (candidate.title === claimed.title
-            || (CONFIDENCE_RANK[candidate.confidence] ?? 0) < (CONFIDENCE_RANK[claimed.confidence] ?? 0)
             || (promptHash != null && promptHash === claimed.prompt))) return { status: 'already handled' };
         // The plugin registry, agent generation, title, and pane label are all
         // checked again under our lock immediately before the non-atomic write.
@@ -261,6 +273,6 @@ export async function handleStatus({ event, configDir, call = herdr, readPrompt 
         await save(join(dir, `pane-${key(paneId)}.json`), { generation: before.generation, title: candidate.title, at: new Date().toISOString() });
         return await outcome(dir, { status: 'titled', title: candidate.title, confidence: candidate.confidence, source: candidate.source });
     } catch (error) {
-        return await outcome(dir, { status: 'unavailable', reason: error instanceof Error ? error.message.slice(0, 120) : 'Herdr unavailable.' });
+        return await note({ status: 'unavailable', reason: error instanceof Error ? error.message.slice(0, 120) : 'Herdr unavailable.' });
     } finally { await rm(lock, { recursive: true, force: true }); }
 }

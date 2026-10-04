@@ -84,6 +84,12 @@ describe('task titles', () => {
         assert.equal(pane.title, 'Fix auth redirect bug');
         assert.equal((await handleStatus({ event: detected, configDir, call })).status, 'ignored');
         assert(writes.every((args) => !args.includes('--ttl-ms')));
+        // Restarted again, and the resumed agent gets a new task: it is titled, not restored.
+        pane.title = '';
+        agent.title = '';
+        agent.agent_status = 'working';
+        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'Add dark mode' })).status, 'titled');
+        assert.equal(pane.title, 'Add dark mode');
     });
 
     it('keeps task titles on when only the name set is configured', async () => {
@@ -200,7 +206,7 @@ describe('task titles', () => {
         assert.equal((await handleStatus({ event: detected, configDir, call })).status, 'ignored');
         assert.equal(pane.title, '');
         agent.agent_status = 'working';
-        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'Fix the auth redirect bug in login flow' })).title, 'Fix auth redirect bug');
+        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'yes, go ahead' })).title, 'Fix auth redirect bug', 'a vague follow-up keeps the real task');
         assert.equal(pane.title, 'Fix auth redirect bug');
         assert.equal((await handleStatus({ event: done, configDir, call })).status, 'cleared');
 

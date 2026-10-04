@@ -7,7 +7,7 @@
 // `names` opts into random words instead ("nato" or "elements").
 import { mkdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { gitBranch, herdr, json, load, privateDirectory, save } from './runtime.mjs';
+import { gitBranch, herdr, json, key, load, privateDirectory, save } from './runtime.mjs';
 import { STOP, titleFromBranch, titleFromRepo } from './title.mjs';
 
 // Curated by ear for a voice assistant: 1-3 syllables, every name starts
@@ -41,14 +41,20 @@ export function slug(title) {
 }
 
 /** The work's name: Firstmate task id from its `fm/` branch, else a slug of the task title. */
-async function workName(target, readBranch) {
+async function workName(target, readBranch, stored) {
     const cwd = target.foreground_cwd ?? target.cwd;
     const branch = await readBranch(cwd).catch(() => undefined);
     const task = /^fm\/([\w.-]+)$/.exec(branch ?? '')?.[1];
     const guesses = [titleFromBranch(branch)?.title, titleFromRepo(cwd)?.title].map(slug);
     const title = slug(target.title);
+    const storedTitle = slug(stored);
     // A title guessed from the branch or repo name never beats a name from a real task.
-    return { task, title: guesses.includes(title) ? undefined : title, fallback: guesses.find(Boolean) };
+    // The agent list may still show a blank or guessed title while the title
+    // pass already derived the real one into the pane store, so that stored
+    // title stands in when the agent's own title has nothing real yet.
+    const real = guesses.includes(title) ? undefined : title;
+    const remembered = !storedTitle || guesses.includes(storedTitle) ? undefined : storedTitle;
+    return { task, title: real ?? remembered, fallback: guesses.find(Boolean) };
 }
 
 function unique(name, taken) {
@@ -119,7 +125,10 @@ export async function nameAgent({ event, configDir, call = herdr, random = Math.
         const pinned = !!entry.pinned;
         let task = !!entry.task;
         if (!pinned && set === 'work') {
-            const work = await workName(target, readBranch);
+            const cwd = target.foreground_cwd ?? target.cwd;
+            const prior = await load(join(dir, `pane-${key(paneId)}.json`), undefined);
+            const stored = !prior?.title || prior.cleared || (prior.cwd && prior.cwd !== cwd && prior.cwd !== target.cwd) ? undefined : prior.title;
+            const work = await workName(target, readBranch, stored);
             // A task id is the name Firstmate gives its worker: it stays until another task id replaces it.
             const base = work.task ?? (task ? entry.name : undefined) ?? work.title ?? entry.name ?? work.fallback;
             name = !base || ours(base) ? entry.name : unique(base, taken);

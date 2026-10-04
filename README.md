@@ -57,6 +57,15 @@ Give the agent a new task and its title follows. A first guess from the reposito
 - **Local only.** Prompts are read from the agent's own session files on your machine. No network calls, no npm dependencies.
 - **Plays fair.** If another naming or task-title plugin is enabled, this one leaves titles to it. Use one at a time.
 
+### Sources
+
+Naming research behind this change:
+
+- [tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect/blob/master/README.md) — saves sessions, panes and each pane's cwd so the full layout comes back after a restart; borrowed: re-derive names from the work instead of inventing new ones.
+- [Zellij](https://zellij.dev/documentation/commands.html) — explicit named sessions (`--session-name`, `rename-session`) you can find again; borrowed: stable human-chosen names beat generated ones, so a person-set name is never replaced.
+- [Warp](https://docs.warp.dev/terminal/windows/tabs/) — tabs named for what they run, where a manual rename must stick; borrowed: the task-derived title follows the work, and a manual rename wins over auto-naming.
+- [agent-conductor](https://github.com/gaurav-yadav/agent-conductor/blob/main/Agent.md) — named supervisor/worker sessions with stable ids persisting across disconnects; borrowed: a per-pane ledger so names survive a restart and a relaunch.
+
 ## Download / Install
 
 You need [Herdr](https://herdr.dev) 0.8.0 or newer and [Node.js](https://nodejs.org/) 20 or newer, on Linux or macOS.

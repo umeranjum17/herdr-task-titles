@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { NAME_SETS, nameAgent } from './names.mjs';
+import { key } from './runtime.mjs';
 
 const root = await mkdtemp(join(tmpdir(), 'herdr-agent-names-'));
 const configDir = join(root, 'herdr.task-titles');
@@ -69,6 +70,21 @@ describe('agent names', () => {
         h.restart();
         h.agents[3].title = 'Shop';
         assert.deepEqual(await name('w4', h), { status: 'named', name: 'add-csv-export' });
+    });
+
+    it('names a blank agent from the prompt-derived title store, not the repo guess', async () => {
+        await mkdir(configDir, { recursive: true });
+        const paneId = 'np1';
+        await writeFile(join(configDir, `pane-${key(paneId)}.json`),
+            JSON.stringify({ generation: 'gen-one', title: 'Fix auth redirect bug', cwd: '/home/umer/shop', at: new Date().toISOString() }));
+        try {
+            const h = herd([{ ...agent(paneId, ''), cwd: '/home/umer/shop' }]);
+            assert.deepEqual(await name(paneId, h), { status: 'named', name: 'fix-auth-redirect' });
+            assert.deepEqual(h.renames, [[paneId, 'fix-auth-redirect']]);
+        } finally {
+            await rm(join(configDir, `pane-${key(paneId)}.json`), { force: true });
+            await rm(join(configDir, 'names.json'), { force: true });
+        }
     });
 
     it('never replaces a name set by a person or Firstmate, even after a restart', async () => {

@@ -64,7 +64,7 @@ export async function save(file, value) {
     } finally { await rm(temporary, { force: true }); }
 }
 
-function key(value) { return createHash('sha256').update(value).digest('hex').slice(0, 24); }
+export function key(value) { return createHash('sha256').update(value).digest('hex').slice(0, 24); }
 function displayHash(value) { return createHash('sha256').update(value ?? '').digest('hex').slice(0, 16); }
 
 async function snapshot(call, paneId) {
@@ -270,7 +270,7 @@ export async function handleStatus({ event, configDir, call = herdr, readPrompt 
             '--token', `herdr_task_title_hash=${displayHash(candidate.title)}`,
             '--token', `herdr_task_label_hash=${displayHash(before.pane.label ?? '')}`]);
         await save(marker, { status: 'published', title: candidate.title, source: SOURCE, confidence: candidate.confidence, prompt: promptHash, at: new Date().toISOString() });
-        await save(join(dir, `pane-${key(paneId)}.json`), { generation: before.generation, title: candidate.title, at: new Date().toISOString() });
+        await save(join(dir, `pane-${key(paneId)}.json`), { generation: before.generation, title: candidate.title, cwd: before.pane.foreground_cwd ?? before.pane.cwd, at: new Date().toISOString() });
         return await outcome(dir, { status: 'titled', title: candidate.title, confidence: candidate.confidence, source: candidate.source });
     } catch (error) {
         return await note({ status: 'unavailable', reason: error instanceof Error ? error.message.slice(0, 120) : 'Herdr unavailable.' });

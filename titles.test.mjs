@@ -72,6 +72,26 @@ describe('task titles', () => {
         assert(!writes[0].includes('--ttl-ms'), 'title report must not carry a TTL');
     });
 
+    it('restores a title lost to a Herdr restart when the agent resumes', async () => {
+        const { pane, agent, writes, call, event } = rig({ session: 'resumed-session' });
+        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'Fix the auth redirect bug in login flow' })).status, 'titled');
+        // Restart: Herdr keeps the pane and resumes the same session, but not the metadata.
+        pane.title = '';
+        agent.title = '';
+        agent.agent_status = 'idle';
+        const detected = { data: { pane_id: 'lab:p1', type: 'pane_agent_detected', agent: 'codex', released: false } };
+        assert.deepEqual(await handleStatus({ event: detected, configDir, call }), { status: 'restored', title: 'Fix auth redirect bug' });
+        assert.equal(pane.title, 'Fix auth redirect bug');
+        assert.equal((await handleStatus({ event: detected, configDir, call })).status, 'ignored');
+        assert(writes.every((args) => !args.includes('--ttl-ms')));
+        // Restarted again, and the resumed agent gets a new task: it is titled, not restored.
+        pane.title = '';
+        agent.title = '';
+        agent.agent_status = 'working';
+        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'Add dark mode' })).status, 'titled');
+        assert.equal(pane.title, 'Add dark mode');
+    });
+
     it('keeps task titles on when only the name set is configured', async () => {
         await writeFile(join(configDir, 'settings.json'), '{ "names": "elements" }');
         const { writes, call, event } = rig({ session: 'names-only-settings' });
@@ -180,6 +200,15 @@ describe('task titles', () => {
         assert.equal(pane.title, '');
         assert.equal(agent.title, '');
         assert.equal((await handleStatus({ event: done, configDir, call })).status, 'already handled');
+        // A title cleared on purpose is not "restored" by a later agent event,
+        // but comes back once the agent works again (a relaunch resuming it).
+        const detected = { data: { pane_id: 'lab:p1', type: 'pane_agent_detected', agent: 'codex', released: false } };
+        assert.equal((await handleStatus({ event: detected, configDir, call })).status, 'ignored');
+        assert.equal(pane.title, '');
+        agent.agent_status = 'working';
+        assert.equal((await handleStatus({ event, configDir, call, readPrompt: async () => 'yes, go ahead' })).title, 'Fix auth redirect bug', 'a vague follow-up keeps the real task');
+        assert.equal(pane.title, 'Fix auth redirect bug');
+        assert.equal((await handleStatus({ event: done, configDir, call })).status, 'cleared');
 
         pane.title = 'My manual task';
         agent.title = 'My manual task';

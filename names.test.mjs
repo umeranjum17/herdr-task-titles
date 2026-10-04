@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { NAME_SETS, chooseName, nameAgent } from './names.mjs';
+import { NAME_SETS, nameAgent } from './names.mjs';
+import { key } from './runtime.mjs';
 
 const root = await mkdtemp(join(tmpdir(), 'herdr-agent-names-'));
 const configDir = join(root, 'herdr.task-titles');
@@ -13,33 +14,136 @@ const agent = (pane_id, name, kind = 'claude') => ({ pane_id, agent: kind, name 
 const first = () => 0;
 
 describe('agent names', () => {
-    it('names only real agents with a blank or internal name', () => {
-        const names = ['neon', 'gold'];
-        assert.equal(chooseName([agent('p1', '')], 'p1', names, first), 'neon');
-        assert.equal(chooseName([agent('p1', null)], 'p1', names, first), 'neon');
-        assert.equal(chooseName([agent('p1', 'pp_abc')], 'p1', names, first), 'neon');
-        assert.equal(chooseName([agent('p1', 'pph_abc')], 'p1', names, first), 'neon');
-        assert.equal(chooseName([agent('p1', 'my manual name')], 'p1', names, first), undefined);
-        assert.equal(chooseName([agent('p1', 'gold')], 'p1', names, first), undefined);
-        assert.equal(chooseName([agent('p1', '', null)], 'p1', names, first), undefined, 'plain shell pane');
-        assert.equal(chooseName([agent('p2', '')], 'p1', names, first), undefined, 'pane not listed yet');
+    // A fake Herdr: `agent list` and `agent rename`; a restart or relaunch blanks every name.
+    function herd(agents) {
+        const renames = [];
+        const call = async (args) => {
+            if (args[1] === 'list') return JSON.stringify({ result: { agents: agents.map((entry) => ({ ...entry })) } });
+            if (args[1] === 'rename') {
+                renames.push(args.slice(2));
+                agents.find((entry) => entry.pane_id === args[2]).name = args[3];
+                return '{}';
+            }
+            throw new Error('unexpected call');
+        };
+        const restart = () => agents.forEach((entry) => { entry.name = null; });
+        return { agents, renames, call, restart };
+    }
+    const branches = { '/work/fm': 'fm/mx-task-titles-naming1', '/work/feat': 'feat/csv-export' };
+    const readBranch = async (cwd) => branches[cwd];
+    const name = (pane_id, h, extra = {}) => nameAgent({ event: { data: { pane_id } }, configDir, call: h.call, readBranch, random: first, ...extra });
+
+    it('names a fresh agent after its work and re-derives the same name after a restart', async () => {
+        const h = herd([
+            { ...agent('w1', ''), cwd: '/work/fm' },
+            { ...agent('w2', null), cwd: '/home/umer/pockit', title: 'Fix the auth redirect bug' },
+            { ...agent('w3', 'pp_abc'), cwd: '/work/feat' },
+            { ...agent('w4', ''), cwd: '/home/umer/shop' },
+            { ...agent('w5', ''), cwd: '/home/umer/shop' },
+            { ...agent('sh', '', null), cwd: '/work/fm' },
+        ]);
+        for (const pane of ['w1', 'w2', 'w3', 'w4', 'w5', 'sh']) await name(pane, h);
+        assert.deepEqual(h.agents.map((entry) => entry.name),
+            ['mx-task-titles-naming1', 'fix-auth-redirect', 'csv-export', 'shop', 'shop-2', ''], 'task id, title slug, branch, repo; shells untouched');
+        // Herdr restart or agent relaunch: names are blank again and come back from the work.
+        h.restart();
+        for (const pane of ['w1', 'w2', 'w3', 'w4', 'w5']) await name(pane, h);
+        assert.deepEqual(h.agents.slice(0, 5).map((entry) => entry.name), ['mx-task-titles-naming1', 'fix-auth-redirect', 'csv-export', 'shop', 'shop-2']);
+        // Whichever pane Herdr reports first, each gets its own name back.
+        h.restart();
+        for (const pane of ['w5', 'w4', 'w1']) await name(pane, h);
+        assert.deepEqual(h.agents.slice(3, 5).map((entry) => entry.name), ['shop', 'shop-2']);
+        // A task id stays even when the worker leaves its fm/ branch.
+        branches['/work/fm'] = 'main';
+        h.restart();
+        assert.deepEqual(await name('w1', h), { status: 'named', name: 'mx-task-titles-naming1' });
+        // ...but a reused worktree slot relaunched on another task takes the new task id.
+        branches['/work/fm'] = 'fm/mx-next-task';
+        h.restart();
+        assert.deepEqual(await name('w1', h), { status: 'named', name: 'mx-next-task' });
+        branches['/work/fm'] = 'fm/mx-task-titles-naming1';
+        // The title the plugin derives later upgrades a name it issued itself.
+        h.agents[3].title = 'Add CSV export to reports';
+        assert.deepEqual(await name('w4', h), { status: 'named', name: 'add-csv-export' });
+        assert.deepEqual(await name('w4', h), { status: 'already named', name: 'add-csv-export' });
+        // A relaunch whose first title is only the repo-name guess keeps the task's name.
+        h.restart();
+        h.agents[3].title = 'Shop';
+        assert.deepEqual(await name('w4', h), { status: 'named', name: 'add-csv-export' });
     });
 
-    it('picks an unused name and suffixes only when the set runs out', () => {
-        const names = ['neon', 'gold'];
-        assert.equal(chooseName([agent('p1', ''), agent('p2', 'neon')], 'p1', names, first), 'gold');
-        const full = chooseName([agent('p1', ''), agent('p2', 'neon'), agent('p3', 'gold')], 'p1', names, first);
-        assert.equal(full, 'neon-2');
-        const nato = NAME_SETS.nato;
-        assert.equal(nato.length, 26);
-        assert.ok(nato.includes('alpha') && nato.includes('juliet'));
-        assert.equal(chooseName([agent('p1', ''), ...nato.map((name, i) => agent(`n${i}`, name))], 'p1', nato, () => 0.05), 'bravo-2');
-        assert.equal(chooseName([agent('p1', ''), agent('p2', 'neon'), agent('p3', 'gold'), agent('p4', 'neon-2')], 'p1', names, first), 'gold-2');
-        assert.equal(chooseName([agent('p1', ''), agent('p2', 'neon'), agent('p3', 'gold'), agent('p4', 'neon-2'), agent('p5', 'gold-2')], 'p1', names, first), 'neon-3');
+    it('names a blank agent from the prompt-derived title store, not the repo guess', async () => {
+        await mkdir(configDir, { recursive: true });
+        const paneId = 'np1';
+        await writeFile(join(configDir, `pane-${key(paneId)}.json`),
+            JSON.stringify({ generation: 'gen-one', title: 'Fix auth redirect bug', cwd: '/home/umer/shop', at: new Date().toISOString() }));
+        try {
+            const h = herd([{ ...agent(paneId, ''), cwd: '/home/umer/shop' }]);
+            assert.deepEqual(await name(paneId, h), { status: 'named', name: 'fix-auth-redirect' });
+            assert.deepEqual(h.renames, [[paneId, 'fix-auth-redirect']]);
+        } finally {
+            await rm(join(configDir, `pane-${key(paneId)}.json`), { force: true });
+            await rm(join(configDir, 'names.json'), { force: true });
+        }
+    });
+
+    it('never replaces a name set by a person or Firstmate, even after a restart', async () => {
+        const h = herd([{ ...agent('m1', ''), cwd: '/home/umer/shop' }, { ...agent('m2', 'my manual name'), cwd: '/work/fm' }]);
+        await name('m1', h);
+        h.agents[0].name = 'crewhouse'; // Firstmate's one-time rename after ours
+        h.agents[0].title = 'Fix checkout rounding';
+        assert.equal((await name('m1', h)).status, 'owned elsewhere');
+        assert.equal((await name('m2', h)).status, 'owned elsewhere', 'even over a Firstmate branch');
+        h.restart();
+        assert.deepEqual(await name('m1', h), { status: 'named', name: 'crewhouse' });
+        assert.deepEqual(await name('m2', h), { status: 'named', name: 'my manual name' });
+        assert.equal((await name('m1', h)).status, 'owned elsewhere');
+        // A later agent in a reused pane id, on other work, starts fresh.
+        h.agents[1].cwd = '/home/umer/shop';
+        h.agents[1].name = '';
+        assert.equal((await name('m2', h)).name, 'shop');
+    });
+
+    it('replaces the random words 0.2.x drew on its first run, keeping chosen names', async () => {
+        await rm(join(configDir, 'names.json'), { force: true });
+        const h = herd([{ ...agent('l1', 'papa'), cwd: '/work/fm' }, { ...agent('l2', 'crewhouse'), cwd: '/work/fm' }]);
+        assert.deepEqual(await name('l1', h), { status: 'named', name: 'mx-task-titles-naming1' });
+        assert.equal((await name('l2', h)).status, 'owned elsewhere');
+        h.restart();
+        assert.deepEqual(await name('l2', h), { status: 'named', name: 'crewhouse' });
+    });
+
+    it('never overwrites a rename that lands while it works', async () => {
+        const h = herd([{ ...agent('t1', ''), cwd: '/home/umer/shop' }]);
+        const call = async (args) => {
+            const out = await h.call(args);
+            if (args[1] === 'list' && !h.agents[0].name) h.agents[0].name = 'firstmate-pick';
+            return out;
+        };
+        assert.equal((await name('t1', h, { call })).status, 'owned elsewhere');
+        assert.equal(h.agents[0].name, 'firstmate-pick');
+        assert.deepEqual(h.renames, []);
+    });
+
+    it('draws random words only when opted in, and keeps them across a restart', async () => {
+        const h = herd([agent('r1', 'pp_x'), agent('r2', 'alpha'), agent('r3', 'neon')]);
+        await writeFile(join(configDir, 'settings.json'), '{ "names": "nato" }');
+        assert.deepEqual(await name('r1', h), { status: 'named', name: 'bravo' });
+        h.agents[1].name = 'bravo-2';
+        h.agents[0].name = null;
+        assert.deepEqual(await name('r1', h, { random: () => 0.99 }), { status: 'named', name: 'bravo' }, 'the issued word comes back');
+        h.agents[0].name = '';
+        await writeFile(join(configDir, 'settings.json'), '{ "names": "elements" }');
+        assert.equal((await name('r1', h)).name, 'gold', 'a relaunched agent takes a word from the new set');
+        await writeFile(join(configDir, 'settings.json'), '{ "names": "off" }');
+        assert.equal((await name('r1', h)).status, 'disabled');
+        await writeFile(join(configDir, 'settings.json'), '{ "enabled": false }');
+        assert.equal((await name('r1', h)).status, 'disabled');
+        await rm(join(configDir, 'settings.json'));
     });
 
     it('serializes concurrent names across panes', async () => {
-        const agents = [agent('a', ''), agent('b', '')];
+        const agents = [{ ...agent('a', ''), cwd: '/home/umer/shop' }, { ...agent('b', ''), cwd: '/home/umer/shop' }];
         let releaseList;
         let firstList;
         const listed = new Promise((resolve) => { firstList = resolve; });
@@ -60,9 +164,9 @@ describe('agent names', () => {
         await listed;
         const b = nameAgent({ event: { data: { pane_id: 'b' } }, configDir, call, random: first });
         releaseList();
-        assert.equal((await a).name, 'alpha');
-        assert.equal((await b).name, 'bravo');
-        assert.equal(lists, 2);
+        assert.equal((await a).name, 'shop');
+        assert.equal((await b).name, 'shop-2');
+        assert.equal(lists, 4, 'one list and one re-read each');
     });
 
     it('recovers a leftover old naming lock', async () => {
@@ -74,30 +178,10 @@ describe('agent names', () => {
         const calls = [];
         const call = async (args) => {
             calls.push(args);
-            return JSON.stringify({ result: { agents: [agent('stale', '')] } });
+            return JSON.stringify({ result: { agents: [{ ...agent('stale', ''), title: 'Fix login redirect' }] } });
         };
-        assert.deepEqual(await nameAgent({ event: { data: { pane_id: 'stale' } }, configDir, call, random: first }), { status: 'named', name: 'alpha' });
-        assert.deepEqual(calls.at(-1), ['agent', 'rename', 'stale', 'alpha']);
-    });
-
-    it('renames through Herdr and honours the configured set', async () => {
-        const calls = [];
-        const agents = [agent('p1', 'pp_x'), agent('p2', 'alpha'), agent('p3', 'neon')];
-        const call = async (args) => {
-            calls.push(args);
-            return JSON.stringify({ result: { agents } });
-        };
-        const event = { data: { pane_id: 'p1' } };
-        assert.deepEqual(await nameAgent({ event, configDir, call, random: first }), { status: 'named', name: 'bravo' }, 'nato is the default');
-        assert.deepEqual(calls.at(-1), ['agent', 'rename', 'p1', 'bravo']);
-
-        await writeFile(join(configDir, 'settings.json'), '{ "names": "elements" }');
-        assert.equal((await nameAgent({ event, configDir, call, random: first })).name, 'gold');
-        await writeFile(join(configDir, 'settings.json'), '{ "names": "off" }');
-        assert.equal((await nameAgent({ event, configDir, call, random: first })).status, 'disabled');
-        await writeFile(join(configDir, 'settings.json'), '{ "enabled": false }');
-        assert.equal((await nameAgent({ event, configDir, call, random: first })).status, 'disabled');
-        assert.equal(calls.filter((args) => args[1] === 'rename').length, 2);
+        assert.deepEqual(await nameAgent({ event: { data: { pane_id: 'stale' } }, configDir, call, random: first }), { status: 'named', name: 'fix-login-redirect' });
+        assert.deepEqual(calls.at(-1), ['agent', 'rename', 'stale', 'fix-login-redirect']);
     });
 
     for (const [set, names] of Object.entries(NAME_SETS)) {

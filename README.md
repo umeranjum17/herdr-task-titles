@@ -9,7 +9,7 @@
 
 <p align="center">
   <strong>Every agent a name. Every task a title.</strong><br/>
-  A <a href="https://herdr.dev">Herdr</a> plugin that makes a screen full of agents easy to tell apart. Each new agent gets a short name you can say out loud, and each pane is titled with what its agent is working on, read from the task you gave it.
+  A <a href="https://herdr.dev">Herdr</a> plugin that makes a screen full of agents easy to tell apart. Each agent is named after its work, and each pane is titled with what its agent is working on, read from the task you gave it.
 </p>
 
 <h3 align="center"><a href="#download--install"><ins>Install</ins></a></h3>
@@ -20,13 +20,19 @@
 
 ## Why it exists
 
-Run a few agents side by side and they all look alike: every pane says `pi` or `claude`, every agent is unnamed, and finding the one fixing the login bug means reading terminals. This plugin names and titles them for you, so you can glance at the screen, or say "romeo" out loud, and know which is which.
+Run a few agents side by side and they all look alike: every pane says `pi` or `claude`, every agent is unnamed, and finding the one fixing the login bug means reading terminals. This plugin names and titles them for you, so you can glance at the screen and know which is which.
 
 ## See it in action
 
-### Names you can say out loud
+### Names from the work
 
-Every new agent gets a short, distinct name: `alpha`, `bravo`, `charlie` … `zulu` by default, or chemical elements if you prefer. No two names in a set rhyme or start the same way, so they work by voice. When every name is taken, the set continues as `alpha-2`, `bravo-2` and so on. Names you set yourself are never changed, and plain shell panes are left alone.
+Every agent is named after what it is doing:
+
+1. **Its Firstmate task id**, when it works on an `fm/<task-id>` branch: `mx-task-titles-naming1`.
+2. **A short slug of its task title**: `Fix login redirect bug` becomes `fix-login-redirect`.
+3. **Its task branch or repository**, until the task is known: `csv-export`, `shop`.
+
+Two agents on the same work become `shop` and `shop-2`. Herdr clears a name when an agent relaunches and may lose it in a restart; the plugin derives the same name again, never a random one. A name you or Firstmate set is never replaced, and comes back after a restart or relaunch. Plain shell panes are left alone.
 
 ### A title from the task
 
@@ -90,15 +96,16 @@ Settings live in `settings.json` in the plugin's config directory:
 herdr plugin config-dir herdr.task-titles
 ```
 
-Choose a name set with `names`:
+Prefer random words you can say out loud? Choose a name set with `names`:
 
 ```json
-{ "names": "elements" }
+{ "names": "nato" }
 ```
 
 | `names` | Agents are named |
 |---|---|
-| `nato` (default) | alpha, bravo, charlie, delta … zulu |
+| `work` (default) | after their work, as above |
+| `nato` | alpha, bravo, charlie, delta … zulu |
 | `elements` | neon, gold, zinc, cobalt, silver, helium … |
 | `off` | not at all; task titles still work |
 

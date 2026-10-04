@@ -5,7 +5,7 @@ const BOILERPLATE = /^(?:#\s*(?:Task|Rules|Setup|Definition of done|Firstmate sp
 const TASK_VERB = /^(?:please\s+)?(?:can you\s+|could you\s+|i (?:want|need) (?:you to\s+)?|help me\s+|we (?:need|have|want) to\s+|we should\s+|let'?s\s+)?(align|unify|rework|redesign|polish|restore|prevent|handle|finish|build|implement|create|add|fix|repair|debug|improve|update|refactor|remove|replace|migrate|design|write|make|investigate|test|ship|integrate|support|extract|rename|simplify|audit)\b/i;
 // A "why is X happening?" question states the problem when no ask does.
 const WHY = /^why (?:is|are|does|do|did|isn't|aren't|doesn't|don't|can't|won't) (?:the |an? )?/i;
-const STOP = new Set(['a', 'an', 'the', 'for', 'in', 'on', 'of', 'to', 'with', 'and', 'or', 'from', 'using', 'that', 'which', 'after', 'before', 'by']);
+export const STOP = new Set(['a', 'an', 'the', 'for', 'in', 'on', 'of', 'to', 'with', 'and', 'or', 'from', 'using', 'that', 'which', 'after', 'before', 'by']);
 
 function cleanLine(value) {
     return value.replace(/\p{Cf}/gu, '').replace(/^[\s>*-]+/, '').replace(/[`*_\[\]{}]/g, '').replace(/\s+/g, ' ').trim();

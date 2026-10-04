@@ -45,7 +45,10 @@ async function workName(target, readBranch) {
     const cwd = target.foreground_cwd ?? target.cwd;
     const branch = await readBranch(cwd).catch(() => undefined);
     const task = /^fm\/([\w.-]+)$/.exec(branch ?? '')?.[1];
-    return { task, title: slug(target.title), fallback: slug(titleFromBranch(branch)?.title ?? titleFromRepo(cwd)?.title) };
+    const guesses = [titleFromBranch(branch)?.title, titleFromRepo(cwd)?.title].map(slug);
+    const title = slug(target.title);
+    // A title guessed from the branch or repo name never beats a name from a real task.
+    return { task, title: guesses.includes(title) ? undefined : title, fallback: guesses.find(Boolean) };
 }
 
 function unique(name, taken) {
@@ -98,8 +101,9 @@ export async function nameAgent({ event, configDir, call = herdr, random = Math.
                 .map((agent) => [agent.pane_id, { name: agent.name, pinned: !LEGACY.test(agent.name), cwd: agent.cwd }]));
             await save(ledgerFile, ledger);
         }
-        const entry = (ledger[paneId]?.cwd === target.cwd && ledger[paneId]) || {};
         const current = target.name ?? '';
+        const own = ledger[paneId];
+        const entry = (own && (own.cwd === target.cwd || (!own.pinned && own.name === current)) && own) || {};
         if (!needsName(current) && (entry.pinned || current !== entry.name)) {
             if (current !== entry.name) {
                 ledger[paneId] = { name: current, pinned: true, cwd: target.cwd };
@@ -107,18 +111,19 @@ export async function nameAgent({ event, configDir, call = herdr, random = Math.
             }
             return { status: 'owned elsewhere' };
         }
-        // A blank pane keeps its pinned name reserved while Herdr restores names.
+        // A blank pane keeps its name reserved while Herdr restores names.
         const taken = new Set(agents.filter((agent) => agent?.pane_id !== paneId)
-            .map((agent) => agent?.name || (ledger[agent?.pane_id]?.pinned ? ledger[agent.pane_id].name : '')).filter(Boolean));
+            .map((agent) => agent?.name || (ledger[agent?.pane_id]?.cwd === agent?.cwd ? ledger[agent.pane_id].name : '')).filter(Boolean));
         const ours = (base) => entry.name && !taken.has(entry.name) && (entry.name === base || new RegExp(`^${base}-\\d+$`).test(entry.name));
         let name = entry.name;
-        let pinned = !!entry.pinned;
+        const pinned = !!entry.pinned;
+        let task = !!entry.task;
         if (!pinned && set === 'work') {
             const work = await workName(target, readBranch);
-            const base = work.task ?? work.title ?? entry.name ?? work.fallback;
+            // A task id is the name Firstmate gives its worker: it stays until another task id replaces it.
+            const base = work.task ?? (task ? entry.name : undefined) ?? work.title ?? entry.name ?? work.fallback;
             name = !base || ours(base) ? entry.name : unique(base, taken);
-            // A task id is the name Firstmate gives its worker: keep it.
-            pinned = !!name && name === work.task;
+            task = !!work.task || (task && name === entry.name);
         } else if (!pinned) {
             name = ours(entry.name?.replace(/-\d+$/, '')) && NAME_SETS[set].includes(entry.name.replace(/-\d+$/, ''))
                 ? entry.name : randomName(NAME_SETS[set], taken, random);
@@ -130,7 +135,7 @@ export async function nameAgent({ event, configDir, call = herdr, random = Math.
         const now = json(await call(['agent', 'list'])).agents?.find((agent) => agent?.pane_id === paneId)?.name ?? '';
         if (now !== current) return { status: 'owned elsewhere' };
         await call(['agent', 'rename', paneId, name]);
-        ledger[paneId] = { name, pinned, cwd: target.cwd };
+        ledger[paneId] = { name, pinned, task, cwd: target.cwd };
         await save(ledgerFile, ledger);
         return { status: 'named', name };
     } finally { await rm(lock, { recursive: true, force: true }); }

@@ -54,13 +54,21 @@ describe('agent names', () => {
         assert.deepEqual(h.agents.slice(3, 5).map((entry) => entry.name), ['shop', 'shop-2']);
         // A task id stays even when the worker leaves its fm/ branch.
         branches['/work/fm'] = 'main';
-        assert.equal((await name('w1', h)).status, 'owned elsewhere');
-        assert.equal(h.agents[0].name, 'mx-task-titles-naming1');
+        h.restart();
+        assert.deepEqual(await name('w1', h), { status: 'named', name: 'mx-task-titles-naming1' });
+        // ...but a reused worktree slot relaunched on another task takes the new task id.
+        branches['/work/fm'] = 'fm/mx-next-task';
+        h.restart();
+        assert.deepEqual(await name('w1', h), { status: 'named', name: 'mx-next-task' });
         branches['/work/fm'] = 'fm/mx-task-titles-naming1';
         // The title the plugin derives later upgrades a name it issued itself.
         h.agents[3].title = 'Add CSV export to reports';
         assert.deepEqual(await name('w4', h), { status: 'named', name: 'add-csv-export' });
         assert.deepEqual(await name('w4', h), { status: 'already named', name: 'add-csv-export' });
+        // A relaunch whose first title is only the repo-name guess keeps the task's name.
+        h.restart();
+        h.agents[3].title = 'Shop';
+        assert.deepEqual(await name('w4', h), { status: 'named', name: 'add-csv-export' });
     });
 
     it('never replaces a name set by a person or Firstmate, even after a restart', async () => {

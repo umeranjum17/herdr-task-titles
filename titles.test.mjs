@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { titleCandidate, titleFromBranch, titleFromRepo } from './title.mjs';
+import { slug } from './names.mjs';
 import { handleStatus } from './runtime.mjs';
 import { promptFor } from './providers/index.mjs';
 import { lastPromptFromMessages, opencodeAdapter } from './providers/opencode.mjs';
@@ -262,6 +263,10 @@ describe('task titles', () => {
     });
 
     it('derives titles from real signal, never from boilerplate', () => {
+        assert.equal(titleCandidate('Fix login redirect bug').title, 'Fix login redirect bug');
+        assert.equal(slug(titleCandidate('Fix login redirect bug').title), 'fix-login-redirect');
+        assert.equal(titleCandidate('Add a settings screen').title, 'Add settings screen');
+        assert.equal(slug(titleCandidate('Add a settings screen').title), 'add-settings-screen');
         assert.equal(titleCandidate('Fix the auth redirect bug in login flow').title, 'Fix auth redirect bug');
         assert.equal(titleCandidate('FIRSTMATE_OP: v1 launch-brief: You are a crewmate').title, undefined);
         assert.equal(titleCandidate('').reason, 'No task prompt yet.');

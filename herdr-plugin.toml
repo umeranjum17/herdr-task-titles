@@ -1,6 +1,6 @@
 id = "herdr.task-titles"
 name = "Task titles"
-version = "0.3.0"
+version = "0.3.1"
 min_herdr_version = "0.8.0"
 platforms = ["linux", "macos"]
 description = "Name each agent after its work and give each task a short, readable title"

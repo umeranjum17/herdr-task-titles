@@ -12,12 +12,16 @@ function cleanLine(value) {
 }
 
 function titleFromSentence(sentence) {
-    const artifact = sentence.match(/\b(?:the\s+)?(?:first-class\s+)?([\p{L}\p{N}-]+(?:\s+[\p{L}\p{N}-]+){0,2}\s+(?:plugin|screen|page|flow|feature|bug))\b/iu);
-    if (artifact && /^(?:build|implement|create|add|fix|repair|improve|update|design)\b/i.test(sentence)) {
+    const leading = /^(?:build|implement|create|add|fix|repair|improve|update|design)\b/i.exec(sentence);
+    if (leading) {
         const verb = /^(\p{L}+)/u.exec(sentence)?.[1] ?? 'Build';
-        const phrase = artifact[1].replace(/^(?:the|a|an|backend|frontend|first-class)\s+/i, '');
-        const direct = `${verb} ${phrase}`;
-        if (direct.length <= 60 && (direct.match(/\S+/g)?.length ?? 0) <= 6) return direct.charAt(0).toLocaleUpperCase() + direct.slice(1);
+        const rest = sentence.slice(leading[0].length).trim();
+        const artifact = rest.match(/\b(?:the\s+)?(?:first-class\s+)?([\p{L}\p{N}-]+(?:\s+[\p{L}\p{N}-]+){0,2}\s+(?:plugin|screen|page|flow|feature|bug))\b/iu);
+        if (artifact) {
+            const phrase = artifact[1].replace(/^(?:the|a|an|backend|frontend|first-class)\s+/i, '');
+            const direct = `${verb} ${phrase}`;
+            if (direct.length <= 60 && (direct.match(/\S+/g)?.length ?? 0) <= 6) return direct.charAt(0).toLocaleUpperCase() + direct.slice(1);
+        }
     }
     const words = sentence.match(/[\p{L}\p{N}][\p{L}\p{N}'’+.-]*/gu) ?? [];
     if (words.length < 3) return undefined;

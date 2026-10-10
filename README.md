@@ -15,7 +15,7 @@
 <h3 align="center"><a href="#download--install"><ins>Install</ins></a></h3>
 
 <p align="center">
-  <img src="docs/herd.png" alt="Herdr with three agents named romeo, xray and papa in the sidebar; their panes are titled Fix checkout total rounding in cart.js, Fix login redirect bug, and Csv export" width="960" />
+  <img src="docs/herd.png" alt="Herdr with three agents named build-csv-export, fix-login-redirect, and fix-checkout-total in the sidebar; their panes are titled Fix checkout total rounding in cart.js, Fix login redirect bug, and Build the CSV export feature" width="960" />
 </p>
 
 ## Why it exists
@@ -57,15 +57,6 @@ Give the agent a new task and its title follows. A first guess from the reposito
 - **Local only.** Prompts are read from the agent's own session files on your machine. No network calls, no npm dependencies.
 - **Plays fair.** If another naming or task-title plugin is enabled, this one leaves titles to it. Use one at a time.
 
-### Sources
-
-Naming research behind this change:
-
-- [tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect/blob/master/README.md) — saves sessions, panes and each pane's cwd so the full layout comes back after a restart; borrowed: re-derive names from the work instead of inventing new ones.
-- [Zellij](https://zellij.dev/documentation/commands.html) — explicit named sessions (`--session-name`, `rename-session`) you can find again; borrowed: stable human-chosen names beat generated ones, so a person-set name is never replaced.
-- [Warp](https://docs.warp.dev/terminal/windows/tabs/) — tabs named for what they run, where a manual rename must stick; borrowed: the task-derived title follows the work, and a manual rename wins over auto-naming.
-- [agent-conductor](https://github.com/gaurav-yadav/agent-conductor/blob/main/Agent.md) — named supervisor/worker sessions with stable ids persisting across disconnects; borrowed: a per-pane ledger so names survive a restart and a relaunch.
-
 ## Download / Install
 
 You need [Herdr](https://herdr.dev) 0.8.0 or newer and [Node.js](https://nodejs.org/) 20 or newer, on Linux or macOS.
@@ -105,6 +96,8 @@ Settings live in `settings.json` in the plugin's config directory:
 herdr plugin config-dir herdr.task-titles
 ```
 
+With no settings file, the defaults are `{ "enabled": true, "names": "work" }`.
+
 Prefer random words you can say out loud? Choose a name set with `names`:
 
 ```json
@@ -118,7 +111,7 @@ Prefer random words you can say out loud? Choose a name set with `names`:
 | `elements` | neon, gold, zinc, cobalt, silver, helium … |
 | `off` | not at all; task titles still work |
 
-A changed set renames the agents the plugin named on their next event; names a person or Firstmate set stay. Upgrading from 0.2.x, which drew `nato` words by default, replaces those words with names from the work; names you chose stay, unless they are one of those words.
+A changed set renames the agents the plugin named on their next event; names a person or Firstmate set stay. Upgrading from 0.2.x, which drew random words by default (the `nato` set), replaces those words — or `elements` ones you picked — with names from the work; names you set stay, unless they are one of those words.
 
 ### Turn it off
 

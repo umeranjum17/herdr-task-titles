@@ -61,15 +61,19 @@ Give the agent a new task and the title (and its name) follow. When the agent ex
 
 You need [Herdr](https://herdr.dev) 0.8.0 or newer and [Node.js](https://nodejs.org/) 20 or newer, on Linux or macOS.
 
-```sh
-# 1. install the plugin
-herdr plugin install umeranjum17/herdr-task-titles
+1. **Install** the plugin.
 
-# 2. check it is enabled — shows herdr.task-titles
-herdr plugin list
-```
+   ```sh
+   herdr plugin install umeranjum17/herdr-task-titles
+   ```
 
-3. Start an agent in any pane — `pi`, `claude`, `codex`, or `opencode` — and give it a task. It gets a name in the sidebar, and its pane shows what it is working on.
+2. **Confirm** it is enabled — `herdr plugin list` shows `herdr.task-titles`.
+
+   ```sh
+   herdr plugin list
+   ```
+
+3. **Start an agent.** In any pane start `pi`, `claude`, `codex`, or `opencode` and give it a task. It gets a name in the sidebar, and its pane shows what it is working on.
 
 Update an existing install with:
 

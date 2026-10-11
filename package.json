@@ -4,7 +4,7 @@
   "description": "Herdr plugin: agent names from the work and short, readable task titles",
   "type": "module",
   "scripts": {
-    "test": "node --test titles.test.mjs names.test.mjs"
+    "test": "node --test journey.test.mjs"
   },
   "engines": {
     "node": ">=20"

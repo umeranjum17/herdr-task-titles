@@ -51,6 +51,7 @@ describe('plugin journey against a real Herdr session', () => {
     let env;
     let session;
     let server;
+    let reporter;
     let herdrBin;
     let paneId;
 
@@ -98,9 +99,28 @@ describe('plugin journey against a real Herdr session', () => {
         const created = await herdrJson(['workspace', 'create', '--cwd', repo, '--label', 'Shell']);
         paneId = created.root_pane.pane_id;
 
-        // Bind a real agent session the way the real integration does.
-        await herdr(['pane', 'report-agent', paneId, '--source', 'test:journey', '--agent', 'journey-agent', '--state', 'working', '--seq', '1'], { HERDR_ENV: '1', HERDR_PANE_ID: paneId });
-        await herdr(['pane', 'report-agent-session', paneId, '--source', 'herdr:claude', '--agent', 'claude', '--seq', '2', '--agent-session-id', sessionId], { HERDR_ENV: '1', HERDR_PANE_ID: paneId });
+        // Bind a real agent session the way a live integration does, and keep
+        // it alive: Herdr reaps a reported agent once the pane is back at a
+        // plain shell prompt, so a live integration keeps reporting state.
+        const reporterScript = join(base, 'reporter.sh');
+        await writeFile(reporterScript, [
+            '#!/bin/sh',
+            'i=1',
+            'while :; do',
+            `  HERDR_ENV=1 herdr --session ${session} pane report-agent ${paneId} --source test:journey --agent journey-agent --state working --seq "$i" >/dev/null 2>&1`,
+            `  HERDR_ENV=1 herdr --session ${session} pane report-agent-session ${paneId} --source herdr:claude --agent claude --seq "$i" --agent-session-id ${sessionId} >/dev/null 2>&1`,
+            '  i=$((i + 1))',
+            '  sleep 0.5',
+            'done',
+            '',
+        ].join('\n'));
+        await chmod(reporterScript, 0o755);
+        reporter = spawn(reporterScript, { env, stdio: 'ignore' });
+        await waitFor(async () => {
+            const agent = (await herdrJson(['agent', 'get', paneId])).agent;
+            return agent?.agent_session?.value === sessionId;
+        });
+        assert.equal(reporter.exitCode, null, 'the live-agent reporter must stay running');
 
         // A real Claude transcript the plugin's provider adapter reads for the task.
         const claude = join(base, 'claude', 'projects', 'journey');
@@ -115,6 +135,7 @@ describe('plugin journey against a real Herdr session', () => {
     });
 
     after(async () => {
+        if (reporter && reporter.exitCode === null) reporter.kill('SIGKILL');
         if (server && server.exitCode === null) {
             server.kill('SIGTERM');
             await new Promise((resolve) => {
@@ -140,7 +161,7 @@ describe('plugin journey against a real Herdr session', () => {
 
     it('titles the pane from the task and names the agent from its work', async () => {
         const title = await hook({ pane_id: paneId, agent_status: 'working' });
-        assert.equal(title.status, 'titled');
+        assert.equal(title.status, 'titled', `outcome: ${JSON.stringify(title)}`);
         assert.equal(title.title, 'Fix auth redirect bug');
 
         await waitFor(async () => (await herdrJson(['pane', 'get', paneId])).pane.title === 'Fix auth redirect bug');

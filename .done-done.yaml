@@ -1,0 +1,12 @@
+# done-done project config. `done-done init` never overwrites this file.
+# The app name finds this repo's evidence and receipts from every checkout.
+app: "muxr-task-titles"
+# Commits touching only these keep evidence fresh; mirrors the paths-ignore in .github/workflows/ci.yml.
+evidence:
+  ignore_paths: ["**.md", "docs/**", "LICENSE"]
+journeys:
+  journey:
+    command: npm test > $DONE_DONE_EVIDENCE_ROOT/${RUN_ID}.log 2>&1
+
+# This repo's coding agent, over agent in ~/.done-done/config.yaml (model, effort and the other agent settings stay there).
+# agent: opencode

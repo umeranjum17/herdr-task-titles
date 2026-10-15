@@ -22,4 +22,11 @@ jobs:
         run: |
           curl -fsSL https://herdr.dev/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - run: npm test
+      - name: Install done-done
+        run: npm install -g done-done-axi
+      - name: Run checks as a done-done primitive
+        run: |
+          OUT="$(done-done run journey --json)"
+          echo "$OUT"
+          LOG="$(node -e "console.log(JSON.parse(require('fs').readFileSync(0, 'utf8')).evidence[0])" <<<"$OUT")"
+          done-done receipt --outcome "herdr-task-titles plugin journey passes against a real isolated Herdr session" --claim-id "${{ github.head_ref || github.ref_name }}" "$LOG"

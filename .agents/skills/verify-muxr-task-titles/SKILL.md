@@ -9,8 +9,8 @@ Scaffolded by `done-done init` from this repo's own files, corrected to the real
 
 ## Launch
 
-There is nothing to start by hand: `npm test` runs journey.test.mjs, which starts its own isolated Herdr server session and tears it down afterwards.
-It needs `herdr` on PATH (Herdr 0.8.0 or newer) and Node.js 20 or newer.
+There is nothing to start by hand: `npm ci` restores the one pinned dependency (`@byokit/herdr`), then `npm test` runs journey.test.mjs, which starts its own isolated Herdr server session and tears it down afterwards.
+It needs `herdr` on PATH (Herdr 0.8.0 or newer) and Node.js 22.18 or newer.
 Ready when `npm test` exits 0; never kill by process name.
 
 ## Doctor

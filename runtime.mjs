@@ -7,6 +7,7 @@ import { execFile } from 'node:child_process';
 import { chmod, lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { promisify } from 'node:util';
+import { HerdrKit } from '@byokit/herdr';
 import { titleCandidate, titleFromBranch, titleFromRepo } from './title.mjs';
 import { promptFor } from './providers/index.mjs';
 
@@ -22,9 +23,33 @@ const DEFAULT_LABELS = new Set(['', 'Shell', 'Terminal', 'Agent', 'Claude', 'Cod
 const CONFIDENCE_RANK = { 'repo name': 0, 'task branch': 1, 'clear task': 2 };
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// The BYOKit kit's CLI runner (adopt mode) replaces the plugin's own execFile
+// wrapper. The kit never reads process.env; a Herdr hook's environment is this
+// process's environment, so it is passed through explicitly. Adopt mode always
+// injects its socketPath as HERDR_SOCKET_PATH (an empty value breaks CLI
+// socket resolution), so an absent HERDR_SOCKET_PATH is resolved to the same
+// ambient default the CLI would use: $XDG_CONFIG_HOME/herdr/herdr.sock,
+// falling back to $HOME/.config.
+function ambientSocketPath(env) {
+    if (env.XDG_CONFIG_HOME) return join(env.XDG_CONFIG_HOME, 'herdr/herdr.sock');
+    if (env.HOME) return join(env.HOME, '.config/herdr/herdr.sock');
+    return '';
+}
+let kit;
+function herdrKit() {
+    if (!kit) {
+        const env = { ...process.env };
+        if (!env.HERDR_SOCKET_PATH) delete env.HERDR_SOCKET_PATH;
+        kit = new HerdrKit({ mode: 'adopt', bin: env.HERDR_BIN_PATH || 'herdr', socketPath: env.HERDR_SOCKET_PATH ?? ambientSocketPath(env), env });
+    }
+    return kit;
+}
+
 export async function herdr(args) {
-    const { stdout } = await exec(process.env.HERDR_BIN_PATH || 'herdr', args, { timeout: 5000, maxBuffer: 512 * 1024 });
-    return stdout.trim();
+    const result = await herdrKit().cli(args, { timeoutMs: 5000 });
+    if (result.timedOut) throw new Error(`Herdr call timed out after 5000ms: herdr ${args.join(' ')}`);
+    if (result.exitCode !== 0) throw new Error(result.stderr.trim().slice(0, 200) || `herdr exited with code ${result.exitCode}`);
+    return result.stdout.trim();
 }
 
 /** Current branch of the pane's cwd, or undefined. Never throws. */

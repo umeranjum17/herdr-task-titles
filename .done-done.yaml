@@ -6,7 +6,7 @@ evidence:
   ignore_paths: ["**.md", "docs/**", "LICENSE"]
 journeys:
   journey:
-    command: npm test > $DONE_DONE_EVIDENCE_ROOT/${RUN_ID}.log 2>&1
+    command: npm ci && npm test > $DONE_DONE_EVIDENCE_ROOT/${RUN_ID}.log 2>&1
 
 # This repo's coding agent, over agent in ~/.done-done/config.yaml (model, effort and the other agent settings stay there).
 # agent: opencode

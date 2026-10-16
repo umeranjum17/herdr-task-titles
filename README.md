@@ -59,7 +59,7 @@ Give the agent a new task and the title (and its name) follow. When the agent ex
 
 ## Quick start
 
-You need [Herdr](https://herdr.dev) 0.8.0 or newer and [Node.js](https://nodejs.org/) 20 or newer, on Linux or macOS.
+You need [Herdr](https://herdr.dev) 0.8.0 or newer and [Node.js](https://nodejs.org/) 22.18 or newer, on Linux or macOS.
 
 1. **Install** the plugin.
 
@@ -87,7 +87,7 @@ herdr plugin install umeranjum17/herdr-task-titles --yes
 - **Titles from the task.** Each pane shows what the agent is working on, in a few plain words.
 - **Keeps up.** A new task updates the title and name; exiting clears the title.
 - **Plays fair.** A name or title you set is never replaced, and it steps aside if another naming plugin is enabled.
-- **Local only.** Prompts are read from the agent's own session files on your machine — no network calls, no npm dependencies.
+- **Local only.** Prompts are read from the agent's own session files on your machine — no network calls. Its one npm dependency (`@byokit/herdr`, pinned) installs with the plugin.
 - **Any agent you already use.** pi, Claude Code, Codex, and opencode.
 
 ## Use the agents you already have
@@ -142,6 +142,7 @@ herdr plugin uninstall herdr.task-titles
 ```sh
 git clone https://github.com/umeranjum17/herdr-task-titles
 cd herdr-task-titles
+npm ci
 npm test
 ```
 

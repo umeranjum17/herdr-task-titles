@@ -6,10 +6,12 @@ platforms = ["linux", "macos"]
 description = "Name each agent after its work and give each task a short, readable title"
 
 # npm ci restores the pinned @byokit/herdr into the managed plugin copy at
-# install time, so hook.mjs can import the kit.
+# install time, so hook.mjs can import the kit. Peer dependencies are
+# omitted: they are the kit's react-native/babel/jest tail, which the
+# plugin's CLI path never executes.
 [[build]]
 platforms = ["linux", "macos"]
-command = ["npm", "ci", "--omit=dev"]
+command = ["npm", "ci", "--omit=dev", "--omit=peer"]
 
 [[events]]
 on = "pane.agent_status_changed"

@@ -3,28 +3,44 @@ on:
   push:
     branches: [main]
   pull_request:
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'LICENSE'
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  # Required check: it always runs and reports, but skips the heavy steps on docs-only PRs.
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+        with:
+          fetch-depth: 2
+      - name: Detect docs-only change
+        id: changes
+        run: |
+          heavy=true
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            # HEAD is the PR merge commit; its first parent is the base branch.
+            files="$(git diff --name-only HEAD^1 HEAD)"
+            heavy=false
+            while read -r f; do
+              case "$f" in *.md|docs/*|LICENSE) ;; *) heavy=true ;; esac
+            done <<<"$files"
+          fi
+          echo "heavy=$heavy" | tee -a "$GITHUB_OUTPUT"
+      - if: steps.changes.outputs.heavy == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Install Herdr
+        if: steps.changes.outputs.heavy == 'true'
         run: |
           curl -fsSL https://herdr.dev/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Install done-done
+        if: steps.changes.outputs.heavy == 'true'
         run: npm install -g done-done-axi
       - name: Run checks as a done-done primitive
+        if: steps.changes.outputs.heavy == 'true'
         run: |
           OUT="$(done-done run journey --json)"
           echo "$OUT"

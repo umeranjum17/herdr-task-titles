@@ -1,7 +1,7 @@
 # done-done project config. `done-done init` never overwrites this file.
 # The app name finds this repo's evidence and receipts from every checkout.
 app: "muxr-task-titles"
-# Commits touching only these keep evidence fresh; mirrors the paths-ignore in .github/workflows/ci.yml.
+# Commits touching only these keep evidence fresh; mirrors the docs-only check in .github/workflows/ci.yml.
 evidence:
   ignore_paths: ["**.md", "docs/**", "LICENSE"]
 journeys:

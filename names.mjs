@@ -12,7 +12,7 @@ import { STOP, titleFromBranch, titleFromRepo } from './title.mjs';
 
 // Curated by ear for a voice assistant: 1-3 syllables, every name starts
 // with different letters, and no two rhyme (one of neon/xenon/argon, one
-// -dium, one -gen, ...). names.test.mjs guards both lists.
+// -dium, one -gen, ...).
 export const NAME_SETS = {
     elements: [
         'neon', 'gold', 'zinc', 'cobalt', 'silver', 'helium', 'nickel', 'oxygen',

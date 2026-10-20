@@ -38,11 +38,10 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Install done-done
         if: steps.changes.outputs.heavy == 'true'
-        run: npm install -g done-done-axi
+        run: npm install -g done-done-axi@0.4.1
+      # CI has no judge, and done-done gives no receipt without one: this
+      # records the journey run and fails when the journey fails. The
+      # receipt is recorded locally with the user's judge before the push.
       - name: Run checks as a done-done primitive
         if: steps.changes.outputs.heavy == 'true'
-        run: |
-          OUT="$(done-done run journey --json)"
-          echo "$OUT"
-          LOG="$(node -e "console.log(JSON.parse(require('fs').readFileSync(0, 'utf8')).evidence[0])" <<<"$OUT")"
-          done-done receipt --outcome "herdr-task-titles plugin journey passes against a real isolated Herdr session" --claim-id "${{ github.head_ref || github.ref_name }}" "$LOG"
+        run: done-done run journey || { cat ~/.done-done/evidence/muxr-task-titles/*/*.log; exit 1; }

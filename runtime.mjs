@@ -158,8 +158,10 @@ async function outcome(dir, result) {
     return result;
 }
 
-// The agent exited (`done`, detector release, or pane exit): clear the title
-// we published so the pane falls back to the agent's name. A title that is
+// The agent exited (detector release or pane exit): clear the title we
+// published so the pane falls back to the agent's name. `done` is not an
+// exit: it ends one turn of a live agent (pi reports it after every reply),
+// so the title stays. A title that is
 // no longer ours (manual rename, another writer) is left alone, as is a
 // pane that already shows nothing. The session may already be unbound, so
 // this checks the live titles directly instead of the bound generation.
@@ -199,13 +201,13 @@ function isExitEvent(event) {
 export async function handleStatus({ event, configDir, call = herdr, readPrompt = promptFor, readBranch = gitBranch }) {
     const signal = event?.data?.agent_status;
     const exited = isExitEvent(event);
-    // Any other agent event (detected again after a restart, idle) may only restore a lost title.
-    if (typeof event?.data?.pane_id !== 'string' || (!exited && signal !== 'working' && signal !== 'done' && !event.data.agent)) return { status: 'ignored' };
+    // Any other agent event (detected again after a restart, idle, a finished turn) may only restore a lost title.
+    if (typeof event?.data?.pane_id !== 'string' || (!exited && signal !== 'working' && !event.data.agent)) return { status: 'ignored' };
     const dir = await privateDirectory(configDir);
     const config = await load(join(dir, 'settings.json'), { enabled: true });
     if (config.enabled === false) return { status: 'disabled' };
     const paneId = event.data.pane_id;
-    if (signal === 'done' || exited) return await clearOnExit({ paneId, dir, call });
+    if (exited) return await clearOnExit({ paneId, dir, call });
     const lock = join(dir, `pane-${key(paneId)}.lock`);
     const working = signal === 'working';
     // A 'working' event waits out a restore check holding the lock; others give way.

@@ -17,7 +17,9 @@ function titleFromSentence(sentence) {
         const verb = /^(\p{L}+)/u.exec(sentence)?.[1] ?? 'Build';
         const rest = sentence.slice(leading[0].length).trim();
         const artifact = rest.match(/\b(?:the\s+)?(?:first-class\s+)?([\p{L}\p{N}-]+(?:\s+[\p{L}\p{N}-]+){0,2}\s+(?:plugin|screen|page|flow|feature|bug))\b/iu);
-        if (artifact) {
+        // "Add a discount field to the checkout page": the artifact is the
+        // object, not the trailing "to the checkout page".
+        if (artifact && !STOP.has(artifact[1].split(/\s/)[0].toLowerCase())) {
             const phrase = artifact[1].replace(/^(?:the|a|an|backend|frontend|first-class)\s+/i, '');
             const direct = `${verb} ${phrase}`;
             if (direct.length <= 60 && (direct.match(/\S+/g)?.length ?? 0) <= 6) return direct.charAt(0).toLocaleUpperCase() + direct.slice(1);

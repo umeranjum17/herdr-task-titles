@@ -5,7 +5,8 @@
 //
 // The journey covers both features the deleted unit tests covered:
 //   titles  the pane title is derived from the real task transcript,
-//           published through Herdr, and cleared when the agent exits.
+//           published through Herdr, kept across a finished turn, and
+//           cleared when the agent exits. A pi pane reads its own transcript.
 //           A Firstmate worker or lead is titled from its tab label, task
 //           branch, or lead home instead, never from its brief or doorbells.
 //   names   the agent is renamed after its task (the real `fm/...` branch).
@@ -63,6 +64,7 @@ describe('plugin journey against a real Herdr session', () => {
     let paneId;
     let workerPane;
     let leadPane;
+    let piPane;
     let seq = 0;
 
     const lab = process.env.HERDR_TEST_BIN;
@@ -147,6 +149,18 @@ describe('plugin journey against a real Herdr session', () => {
         await transcript('journey-lead-0003', doorbell);
         await bind(leadPane, 'journey-lead-0003', 'Firstmate operational inbox handling');
 
+        // A pi pane the way the pi integration binds it: the session path
+        // first, from a process Herdr detects as pi, then its state.
+        piPane = await tab('4', await repo('shop', 'main'));
+        const piSession = join(base, 'pi', 'sessions', 'journey-pi-0004.jsonl');
+        await mkdir(join(base, 'pi', 'sessions'), { recursive: true });
+        await writeFile(piSession, `${JSON.stringify({ type: 'message', message: { role: 'user', content: [{ type: 'text', text: 'Add a discount code field to the checkout page' }] } })}\n`);
+        await herdr(['pane', 'run', piPane, `printf '\\033]0;π - shop\\007'; bash -c 'exec -a pi sleep 3600'`]);
+        await waitFor(async () => (await herdrJson(['agent', 'get', piPane])).agent?.agent === 'pi');
+        await herdr(['pane', 'report-agent-session', piPane, '--source', 'herdr:pi', '--agent', 'pi', '--seq', `${++seq}`, '--session-start-source', 'startup', '--agent-session-path', piSession]);
+        await herdr(['pane', 'report-agent', piPane, '--source', 'herdr:pi', '--agent', 'pi', '--state', 'working', '--seq', `${++seq}`, '--agent-session-path', piSession]);
+        await waitFor(async () => (await herdrJson(['agent', 'get', piPane])).agent?.agent_session?.value === piSession);
+
         // The Herdr binary the plugin shells out to: this isolated session.
         herdrBin = lab ?? join(base, 'herdr-bin');
         if (!lab) {
@@ -199,8 +213,18 @@ describe('plugin journey against a real Herdr session', () => {
         await waitFor(async () => (await herdrJson(['agent', 'get', workerPane])).agent.name === taskId);
     });
 
+    it('titles a pi pane from its transcript and keeps it after the turn', async () => {
+        const pi = await hook({ pane_id: piPane, agent_status: 'working' });
+        assert.equal(pi.title, 'Add a discount code field', `outcome: ${JSON.stringify(pi)}`);
+        await waitFor(async () => (await herdrJson(['pane', 'get', piPane])).pane.title === 'Add a discount code field');
+
+        // pi reports `done` after every reply and then sits idle, alive.
+        await hook({ pane_id: piPane, agent_status: 'done', agent: 'pi' });
+        assert.equal((await herdrJson(['pane', 'get', piPane])).pane.title, 'Add a discount code field');
+    });
+
     it('clears its title when the agent exits', async () => {
-        const cleared = await hook({ pane_id: paneId, agent_status: 'done' });
+        const cleared = await hook({ pane_id: paneId, agent: null, released: true });
         assert.equal(cleared.status, 'cleared');
 
         await waitFor(async () => !(await herdrJson(['pane', 'get', paneId])).pane.title?.trim());

@@ -8,6 +8,8 @@ import { piAdapter } from './pi.mjs';
 
 export const PROVIDERS = {
     pi: piAdapter,
+    // omp is a pi fork: same transcript format, same direct path ref.
+    omp: piAdapter,
     claude: claudeAdapter,
     codex: codexAdapter,
     opencode: opencodeAdapter,

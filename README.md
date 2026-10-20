@@ -48,7 +48,7 @@ Each agent is named after what it is doing — a task id from an `fm/<task-id>` 
 
 The pane title comes from the strongest signal available, in order: the task you gave the agent, read from its latest prompt; the task branch it is working on; or the repository name. A title from a prompt is a few plain words, and unclear prose is skipped rather than guessed at.
 
-Give the agent a new task and the title (and its name) follow. When the agent exits, the title is cleared.
+Give the agent a new task and the title (and its name) follow. The title stays while the agent sits idle between turns; when the agent exits, it is cleared.
 
 ### Firstmate panes
 
@@ -99,7 +99,7 @@ herdr plugin install umeranjum17/herdr-task-titles --yes
 
 Names work for any agent Herdr detects. Task titles read prompts from:
 
-- pi
+- pi (and omp, its fork)
 - Claude Code
 - Codex
 - opencode (needs Node.js 22.5 or newer, or the `sqlite3` command)

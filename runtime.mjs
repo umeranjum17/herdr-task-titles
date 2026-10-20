@@ -8,7 +8,7 @@ import { chmod, lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/pr
 import { isAbsolute, join } from 'node:path';
 import { promisify } from 'node:util';
 import { HerdrKit } from '@byokit/herdr';
-import { titleCandidate, titleFromBranch, titleFromRepo } from './title.mjs';
+import { titleCandidate, titleFromBranch, titleFromFirstmate, titleFromRepo } from './title.mjs';
 import { promptFor } from './providers/index.mjs';
 
 const exec = promisify(execFile);
@@ -20,7 +20,7 @@ const DEFAULT_LABELS = new Set(['', 'Shell', 'Terminal', 'Agent', 'Claude', 'Cod
 // Confidence ladder for a derived title: a refresh or upgrade only ever
 // replaces a published title with one at least this strong, never a weaker
 // guess over a stronger one.
-const CONFIDENCE_RANK = { 'repo name': 0, 'task branch': 1, 'clear task': 2 };
+const CONFIDENCE_RANK = { 'repo name': 0, 'task branch': 1, 'clear task': 2, 'firstmate task': 3 };
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // The BYOKit kit's CLI runner (adopt mode) replaces the plugin's own execFile
@@ -57,6 +57,17 @@ export async function gitBranch(cwd) {
     if (typeof cwd !== 'string' || !isAbsolute(cwd)) return undefined;
     try { return (await exec('git', ['-C', cwd, 'branch', '--show-current'], { timeout: 2000 })).stdout.trim() || undefined; }
     catch { return undefined; }
+}
+
+/** Repo name of the pane's git checkout, and the secondmate id its root
+// carries when it is a Firstmate lead's home. Never throws. */
+async function firstmateHome(cwd) {
+    if (typeof cwd !== 'string' || !isAbsolute(cwd)) return {};
+    let root;
+    try { root = (await exec('git', ['-C', cwd, 'rev-parse', '--show-toplevel'], { timeout: 2000 })).stdout.trim() || undefined; }
+    catch { root = undefined; }
+    const lead = await readFile(join(root ?? cwd, '.fm-secondmate-home'), 'utf8').then((id) => id.trim(), () => undefined);
+    return { repo: root?.split('/').pop(), lead };
 }
 
 export function json(output) {
@@ -147,8 +158,10 @@ async function outcome(dir, result) {
     return result;
 }
 
-// The agent exited (`done`, detector release, or pane exit): clear the title
-// we published so the pane falls back to the agent's name. A title that is
+// The agent exited (detector release or pane exit): clear the title we
+// published so the pane falls back to the agent's name. `done` is not an
+// exit: it ends one turn of a live agent (pi reports it after every reply),
+// so the title stays. A title that is
 // no longer ours (manual rename, another writer) is left alone, as is a
 // pane that already shows nothing. The session may already be unbound, so
 // this checks the live titles directly instead of the bound generation.
@@ -188,13 +201,13 @@ function isExitEvent(event) {
 export async function handleStatus({ event, configDir, call = herdr, readPrompt = promptFor, readBranch = gitBranch }) {
     const signal = event?.data?.agent_status;
     const exited = isExitEvent(event);
-    // Any other agent event (detected again after a restart, idle) may only restore a lost title.
-    if (typeof event?.data?.pane_id !== 'string' || (!exited && signal !== 'working' && signal !== 'done' && !event.data.agent)) return { status: 'ignored' };
+    // Any other agent event (detected again after a restart, idle, a finished turn) may only restore a lost title.
+    if (typeof event?.data?.pane_id !== 'string' || (!exited && signal !== 'working' && !event.data.agent)) return { status: 'ignored' };
     const dir = await privateDirectory(configDir);
     const config = await load(join(dir, 'settings.json'), { enabled: true });
     if (config.enabled === false) return { status: 'disabled' };
     const paneId = event.data.pane_id;
-    if (signal === 'done' || exited) return await clearOnExit({ paneId, dir, call });
+    if (exited) return await clearOnExit({ paneId, dir, call });
     const lock = join(dir, `pane-${key(paneId)}.lock`);
     const working = signal === 'working';
     // A 'working' event waits out a restore check holding the lock; others give way.
@@ -242,24 +255,28 @@ export async function handleStatus({ event, configDir, call = herdr, readPrompt 
             }
             await save(attemptFile, { count: attempts.count + 1 });
         }
+        // A Firstmate lead or worker is titled from what Firstmate named it
+        // (its tab label, task branch, or lead home), never from its prompts:
+        // those are launch briefs and inbox doorbells, not the task.
+        const cwd = before.pane.foreground_cwd ?? before.pane.cwd;
+        const branch = await readBranch(cwd).catch(() => undefined);
+        const tab = before.pane.tab_id ? await call(['tab', 'get', before.pane.tab_id]).then((out) => json(out).tab?.label?.trim(), () => undefined) : undefined;
+        let candidate = titleFromFirstmate({ ...await firstmateHome(cwd), label: DEFAULT_LABELS.has(tab ?? '') ? undefined : tab, branch });
         // A generation titled from a real prompt needs only one quick
         // re-read to detect a task change; the patient retry loop is for
         // generations that never saw a prompt yet (upgrade path).
         let prompt;
-        const retries = claimed?.prompt == null ? 12 : 1;
-        for (let attempt = 0; ; attempt++) {
+        const retries = candidate ? 0 : claimed?.prompt == null ? 12 : 1;
+        for (let attempt = 0; attempt < retries; attempt++) {
             prompt = await readPrompt(before.ref).catch(() => undefined);
             if (prompt || attempt + 1 >= retries) break;
             await wait(250);
         }
         let promptHash = prompt ? displayHash(prompt) : null;
-        let candidate = prompt ? titleCandidate(prompt) : undefined;
+        candidate ??= prompt ? titleCandidate(prompt) : undefined;
         // Weakest signal last: the repo directory. Still better than a
         // generic "Shell" label; anything worse leaves the name alone.
-        if (!candidate?.title) {
-            const cwd = before.pane.foreground_cwd ?? before.pane.cwd;
-            candidate = titleFromBranch(await readBranch(cwd).catch(() => undefined)) ?? titleFromRepo(cwd) ?? candidate;
-        }
+        if (!candidate?.title) candidate = titleFromBranch(branch) ?? titleFromRepo(cwd) ?? candidate;
         if (!candidate?.title) return await outcome(dir, { status: 'needs title', reason: candidate?.reason ?? 'No task prompt was available.' });
         // A weaker guess never replaces a stronger title: a blank pane gets
         // the stronger title back. Same title or an unchanged prompt: nothing

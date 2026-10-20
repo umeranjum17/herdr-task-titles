@@ -4,7 +4,8 @@ Part of the muxr-task-titles verification map; the plugin's two behaviors: title
 
 ## Sub-features
 
-- Titles: hook.mjs titles the pane from the strongest signal (task prompt, task branch, repo name) and clears it on exit.
+- Titles: hook.mjs titles the pane from the strongest signal (task prompt, task branch, repo name), keeps it across a finished turn (`done`; pi reports one after every reply), and clears it on exit. A pi pane (also omp) reads its own transcript path.
+- Firstmate titles: a Firstmate worker (`fm-<task-id>` tab or `fm/<task-id>` branch) is titled `<repo>: <task words>` and a lead (its home's `.fm-secondmate-home` id) `<Id> lead`, never from its launch brief or doorbell prompts; the journey's second case drives both with a real brief, doorbell and Claude-style terminal title.
 - Names: names.mjs names the agent after its work; a name or title the user set is never replaced.
 
 ## How to get to it (user POV)
@@ -20,4 +21,5 @@ Install the plugin (`herdr plugin install umeranjum17/herdr-task-titles`), start
 ## Gotchas
 
 - Herdr sockets must fit in sun_path, so the journey uses a short tmp base (HERDR_TEST_TMPDIR or /tmp); see the journey.test.mjs header.
+- In a Firstmate lane, Herdr runs only through the lab helper: export `HERDR_TEST_BIN` as a wrapper around `fm-herdr-lab.sh run <session>` and the journey uses that session instead of starting a server.
 - Plugin registrations are home-global, so never link the working copy into a live Herdr; run hook.mjs directly per AGENTS.md.

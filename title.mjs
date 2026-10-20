@@ -1,6 +1,6 @@
 // Prompt text -> short human title. No network, no guessing: unclear prose is
 // rejected and the caller falls back (repo name) or leaves the name alone.
-const WRAPPER = /^(?:FIRSTMATE_OP\s*:|v\d+ launch-brief\s*:|you are (?:a|the) (?:crewmate|agent)\b|#\s*(?:AGENTS\.md|INSTRUCTIONS|environment_context)\b)/i;
+const WRAPPER = /^(?:FIRSTMATE_OP\s*:|:?\s*Firstmate (?:operational input|instruction) waiting\b|v\d+ launch-brief\s*:|you are (?:a|the) (?:crewmate|agent)\b|#\s*(?:AGENTS\.md|INSTRUCTIONS|environment_context)\b)/i;
 const BOILERPLATE = /^(?:#\s*(?:Task|Rules|Setup|Definition of done|Firstmate spec|Current worker role contract|Current no-mistakes intent contract|Herdr isolation|Firstmate instruction inbox|Project memory)\b|##?\s*(?:Captain's intent|Captain intent authorized for --intent)\b|[-*]\s*(?:Do not|Never|Run |Use |Report |If you |Keep |Stay ))/i;
 const TASK_VERB = /^(?:please\s+)?(?:can you\s+|could you\s+|i (?:want|need) (?:you to\s+)?|help me\s+|we (?:need|have|want) to\s+|we should\s+|let'?s\s+)?(align|unify|rework|redesign|polish|restore|prevent|handle|finish|build|implement|create|add|fix|repair|debug|improve|update|refactor|remove|replace|migrate|design|write|make|investigate|test|ship|integrate|support|extract|rename|simplify|audit)\b/i;
 // A "why is X happening?" question states the problem when no ask does.
@@ -17,7 +17,9 @@ function titleFromSentence(sentence) {
         const verb = /^(\p{L}+)/u.exec(sentence)?.[1] ?? 'Build';
         const rest = sentence.slice(leading[0].length).trim();
         const artifact = rest.match(/\b(?:the\s+)?(?:first-class\s+)?([\p{L}\p{N}-]+(?:\s+[\p{L}\p{N}-]+){0,2}\s+(?:plugin|screen|page|flow|feature|bug))\b/iu);
-        if (artifact) {
+        // "Add a discount field to the checkout page": the artifact is the
+        // object, not the trailing "to the checkout page".
+        if (artifact && !STOP.has(artifact[1].split(/\s/)[0].toLowerCase())) {
             const phrase = artifact[1].replace(/^(?:the|a|an|backend|frontend|first-class)\s+/i, '');
             const direct = `${verb} ${phrase}`;
             if (direct.length <= 60 && (direct.match(/\S+/g)?.length ?? 0) <= 6) return direct.charAt(0).toLocaleUpperCase() + direct.slice(1);
@@ -72,6 +74,33 @@ export function titleFromBranch(branch) {
     const words = slug.replace(/[_.-]+/g, ' ').replace(/(\p{L})\d+$/u, '$1').replace(/\s+/g, ' ').trim();
     if (words.length < 3 || words.length > 40 || !/\p{L}{2}/u.test(words)) return undefined;
     return { title: words.charAt(0).toLocaleUpperCase() + words.slice(1), confidence: 'task branch', source: 'task branch' };
+}
+
+/** A short task-id prefix that abbreviates the repo: `mx` for muxr, `ht` for herdr-task-titles. */
+function abbreviates(prefix, repo) {
+    const letters = repo.toLowerCase();
+    let at = 0;
+    for (const letter of prefix.toLowerCase()) if ((at = letters.indexOf(letter, at) + 1) === 0) return false;
+    return /^\p{L}{2,4}$/u.test(prefix) && letters.startsWith(prefix.charAt(0).toLowerCase());
+}
+
+/** Firstmate pane -> its title, from what Firstmate itself named it. A lead's
+// home carries its secondmate id ("Crewhouse lead"); a worker's tab is
+// `fm-<task-id>` and its branch `fm/<task-id>` ("muxr: scroll fix"). Any
+// other pane is not Firstmate's: undefined. A tab someone relabeled by hand
+// keeps that label as its title. */
+export function titleFromFirstmate({ lead, label, branch, repo }) {
+    const tab = label?.trim() ?? '';
+    const task = /^fm-([\w.-]+)$/.exec(tab)?.[1] ?? /^fm\/([\w.-]+)$/.exec(branch?.trim() ?? '')?.[1];
+    const id = /^[\w.-]{1,40}$/.test(lead ?? '') ? lead.replace(/[_.-]+/g, ' ').replace(/ lead$/i, '').trim() : '';
+    if (!task && !id) return undefined;
+    if (tab && !tab.startsWith('fm-') && !/^\d+$/.test(tab)) return { title: tab, confidence: 'firstmate task', source: 'tab label' };
+    if (id) return { title: `${id.charAt(0).toLocaleUpperCase()}${id.slice(1)} lead`, confidence: 'firstmate task', source: 'firstmate lead' };
+    const parts = task.replace(/(\p{L})\d+$/u, '$1').split(/[_.-]+/).filter(Boolean);
+    if (!parts.length) return undefined;
+    if (repo && parts.length > 2 && (parts[0] === repo || abbreviates(parts[0], repo))) parts.shift();
+    const words = parts.join(' ');
+    return { title: repo ? `${repo}: ${words}` : words.charAt(0).toLocaleUpperCase() + words.slice(1), confidence: 'firstmate task', source: 'firstmate task' };
 }
 
 const GENERIC_DIRS = new Set(['home', 'user', 'users', 'code', 'src', 'work', 'projects', 'repos', 'repo', 'tmp', 'root']);

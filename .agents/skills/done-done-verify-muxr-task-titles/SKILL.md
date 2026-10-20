@@ -1,9 +1,9 @@
 ---
-name: verify-muxr-task-titles
+name: done-done-verify-muxr-task-titles
 description: Drive the muxr-task-titles Herdr plugin the way Herdr does (`npm test`: the journey test against a real isolated Herdr session) and capture proof it works. Use when proving a muxr-task-titles change, capturing evidence, or keeping the feature map honest.
 ---
 
-# verify-muxr-task-titles
+# done-done-verify-muxr-task-titles
 
 Scaffolded by `done-done init` from this repo's own files, corrected to the real drive (a Herdr plugin: no server, page or CLI of its own).
 

@@ -50,6 +50,10 @@ The pane title comes from the strongest signal available, in order: the task you
 
 Give the agent a new task and the title (and its name) follow. When the agent exits, the title is cleared.
 
+### Firstmate panes
+
+A [Firstmate](https://github.com/umeranjum17/firstmate) lead or worker is titled from what Firstmate named it, not from its launch brief or inbox doorbells. A worker on tab `fm-mx-scroll-fix` in the `muxr` repo shows `muxr: scroll fix`; a lead whose home is the `crewhouse` secondmate shows `Crewhouse lead`. A tab relabeled by hand keeps that label as its title.
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/task-change-dark.webp" />
@@ -85,6 +89,7 @@ herdr plugin install umeranjum17/herdr-task-titles --yes
 
 - **Names from the work.** A task id from an `fm/<task-id>` branch, or a short name from the task title.
 - **Titles from the task.** Each pane shows what the agent is working on, in a few plain words.
+- **Firstmate aware.** Firstmate leads and workers are titled from their tab or task, never from a doorbell.
 - **Keeps up.** A new task updates the title and name; exiting clears the title.
 - **Plays fair.** A name or title you set is never replaced, and it steps aside if another naming plugin is enabled.
 - **Local only.** Prompts are read from the agent's own session files on your machine — no network calls. Its one npm dependency (`@byokit/herdr`, pinned) installs with the plugin.
@@ -146,7 +151,7 @@ npm ci
 npm test
 ```
 
-`npm test` runs one end-to-end journey against a real, isolated Herdr session it starts itself. Adding a provider means one adapter file in `providers/` and one line in `providers/index.mjs`.
+`npm test` runs one end-to-end journey against a real, isolated Herdr session it starts itself. To run it in a session you already isolated instead, point `HERDR_TEST_BIN` at a wrapper that scopes every Herdr call to that session. Adding a provider means one adapter file in `providers/` and one line in `providers/index.mjs`.
 
 ## License
 

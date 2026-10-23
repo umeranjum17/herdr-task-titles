@@ -7,6 +7,13 @@ evidence:
 journeys:
   journey:
     command: npm ci && npm test > $DONE_DONE_EVIDENCE_ROOT/${RUN_ID}.log 2>&1
+  # Docs-only changes: VISION.md rendered on GitHub at the pushed head, and the README's link to it.
+  docs:
+    command: >-
+      h=$(git rev-parse HEAD) &&
+      done-done look https://github.com/umeranjum17/herdr-task-titles/blob/$h/VISION.md --out $DONE_DONE_EVIDENCE_ROOT/vision.png &&
+      curl -fsSL https://raw.githubusercontent.com/umeranjum17/herdr-task-titles/$h/README.md | grep -n 'VISION.md' > $DONE_DONE_EVIDENCE_ROOT/readme-link.txt &&
+      printf '{"target":{"version":"%s"},"start":"the repo on GitHub at the pushed head","steps":["open VISION.md","find the README line that links VISION.md"],"result":"VISION.md renders and the README links to it"}' $h > $DONE_DONE_EVIDENCE_ROOT/steps.json
 
 # This repo's coding agent, over agent in ~/.done-done/config.yaml (model, effort and the other agent settings stay there).
 # agent: opencode

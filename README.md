@@ -153,6 +153,10 @@ npm test
 
 `npm test` runs one end-to-end journey against a real, isolated Herdr session it starts itself. To run it in a session you already isolated instead, point `HERDR_TEST_BIN` at a wrapper that scopes every Herdr call to that session. Adding a provider means one adapter file in `providers/` and one line in `providers/index.mjs`.
 
+## Vision
+
+Who this is for, where it is going, and what it will not become: [VISION.md](VISION.md).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

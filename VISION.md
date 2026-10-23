@@ -4,38 +4,38 @@
 
 ## Who it is for
 
-Anyone who runs a few coding agents side by side in [Herdr](https://herdr.dev) — pi, Claude Code, Codex, opencode — and needs to tell them apart.
+Anyone who runs a few AI coding helpers (agents) side by side in [Herdr](https://herdr.dev) — pi, Claude Code, Codex or opencode — and needs to tell them apart.
 
 ## The problem
 
-Run a few agents side by side and they all look the same: every pane says `pi` or `claude`, every agent is unnamed, and finding the one fixing the login bug means reading terminals.
+Run a few agents side by side and they all look the same. Every window says `pi` or `claude`, and none of them has a name. To find the one fixing the login bug, you have to read each screen.
 
 ## Where we are going
 
-A screen full of agents is easy to read at a glance. Each agent is named after its work, and each pane is titled with what that agent is doing right now. Give an agent a new task and its title and name follow; when it exits, the title is cleared.
+A screen full of agents is easy to read at a glance. Each agent is named after its work, and each window shows a short title saying what that agent is doing right now. Give an agent a new task and its title and name change with it. While the agent waits, the title stays; when the agent closes, the title goes away.
 
-The names and titles live in Herdr itself, so anything that shows Herdr's panes shows them as they are.
+The names and titles are saved in Herdr itself, so any app built on Herdr shows them just as they are. Those apps may recommend this plugin to their users.
 
 ## Principles
 
-- **Named from the work.** A name comes from the task, not a counter. Names you can say out loud (`nato`, `elements`) are a choice, not the default.
-- **Plain words, never a guess.** A title is a few plain words from the strongest signal available: the task you gave, the task branch, then the repository. Unclear prose is skipped rather than guessed at.
-- **Plays fair.** A name or title you set is never replaced, and the plugin steps aside if another naming plugin is enabled.
-- **Local only.** Prompts are read from the agent's own session files on your machine. No network calls, and one pinned dependency.
-- **Any agent you already use.** Adding a provider is one adapter file and one line.
-- **For any user.** Nothing in the code, docs or defaults assumes a particular person, machine or setup.
+- **Named after the work.** A name comes from the task, not a number. If you prefer names you can say out loud, like `alpha` or `neon`, you can choose them.
+- **Plain words, never a guess.** A title is a few plain words taken from the task you gave the agent. If the task is unclear, it uses the name of the project the agent works in rather than guess.
+- **Your choices come first.** A name or title you set yourself is never replaced. If you use another naming plugin, this one steps aside.
+- **Stays on your computer.** It reads tasks only from the agent's own files on your computer and sends nothing over the internet.
+- **Works with the agents you already use.** Support for another agent can be added in one small file.
+- **Made for anyone.** Nothing in it assumes a particular person, computer or setup.
 
 ## Quality bar
 
-- Behaviour is proven against a real Herdr, not mocks: `npm test` runs one end-to-end journey in an isolated Herdr session it starts itself.
-- The README shows real Herdr captures of each feature, in light and dark.
+- The plugin is tested on a real Herdr, the way you use it, not on a stand-in.
+- The README shows real screenshots of each feature, in light and dark mode.
 
 ## What it is not
 
-- Not an agent runner or a Herdr replacement. It only names agents and titles panes.
-- Not a summariser. It does not send your prompts anywhere.
-- Not the owner of your names. Your own names and titles, and another naming plugin you prefer, always win.
+- Not a way to run agents, and not a replacement for Herdr. It only names agents and titles their windows.
+- Not a summary tool. It never sends what you type anywhere.
+- Not the boss of your names. Names and titles you set, or another naming plugin you prefer, always win.
 
 ## What comes next
 
-Releases and what each one shipped are on the [releases page](https://github.com/umeranjum17/herdr-task-titles/releases).
+Each release and what it changed is on the [releases page](https://github.com/umeranjum17/herdr-task-titles/releases).

@@ -9,6 +9,7 @@
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-666?style=flat" /></a>
   <img alt="Herdr 0.8.0+" src="https://img.shields.io/badge/Herdr-0.8.0%2B-111?style=flat" />
   <img alt="Linux and macOS" src="https://img.shields.io/badge/Linux%20%7C%20macOS-111?style=flat" />
+  <a href="https://x.com/umership"><img alt="X @umership" src="https://img.shields.io/badge/X-@umership-000?style=flat&logo=x&logoColor=white" /></a>
 </p>
 
 <p align="center">

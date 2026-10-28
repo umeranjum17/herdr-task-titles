@@ -3,28 +3,33 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
-  # Required check: it always runs and reports, but skips the heavy steps on docs-only PRs.
+  # Required check: path ignores live inside this job so they cannot leave it pending.
   test:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
-      - name: Detect docs-only change
+      - name: Detect docs- or evidence-only change
         id: changes
         run: |
           heavy=true
           if [ "${{ github.event_name }}" = pull_request ]; then
             # HEAD is the PR merge commit; its first parent is the base branch.
-            files="$(git diff --name-only HEAD^1 HEAD)"
+            git diff --name-only -z HEAD^1 HEAD > "$RUNNER_TEMP/ci-paths"
             heavy=false
-            while read -r f; do
-              case "$f" in *.md|docs/*|LICENSE) ;; *) heavy=true ;; esac
-            done <<<"$files"
+            while IFS= read -r -d '' f; do
+              case "$f" in
+                *.md|docs/*|evidence/*|.evidence/*|.done-done/evidence/*|LICENSE) ;;
+                *) heavy=true ;;
+              esac
+            done < "$RUNNER_TEMP/ci-paths"
           fi
           echo "heavy=$heavy" | tee -a "$GITHUB_OUTPUT"
       - if: steps.changes.outputs.heavy == 'true'
